@@ -1,228 +1,339 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
-import GameCanvas from "@/components/GameCanvas";
-import GameHUD from "@/components/GameHUD";
-import { useGame, type BoardSize, type GameMode, type Difficulty } from "@/hooks/useGame";
-import { CellState, GameResult } from "@/lib/engine";
+import {
+  LEVELS, RAHU, SURYA, VARIANTS, moveName, playerName,
+  type GameState, type Level, type Player, type VariantId,
+} from "@grahan/engine";
+import Board from "@/components/Board";
+import SiteNav from "@/components/SiteNav";
+import StoneIcon from "@/components/StoneIcon";
+import { DEFAULT_SETUP, useGrahan, type Setup } from "@/hooks/useGrahan";
+import { getSoundEnabled, getSoundServerSnapshot, setSoundEnabled, subscribeSound } from "@/lib/sound";
 
 export default function PlayPage() {
-  const [setupDone, setSetupDone] = useState(false);
-  const [boardSize, setBoardSize] = useState<BoardSize>(5);
-  const [mode, setMode] = useState<GameMode>("pve");
-  const [difficulty, setDifficulty] = useState<Difficulty>(2);
+  const game = useGrahan();
+  const [phase, setPhase] = useState<"setup" | "game">("setup");
+  const [draft, setDraft] = useState<Setup>(DEFAULT_SETUP);
 
-  const game = useGame(boardSize, mode, difficulty);
-
-  // Auto-trigger AI when it's the AI's turn
-  useEffect(() => {
-    if (
-      mode === "pve" &&
-      game.gameResult === GameResult.Ongoing &&
-      game.gameState.turn === CellState.White &&
-      !game.isAIThinking
-    ) {
-      const timer = setTimeout(() => game.triggerAI(), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [game.gameState.turn, game.gameResult, game.isAIThinking, mode, game]);
-
-  if (!setupDone) {
-    return (
-      <main className="min-h-screen flex items-center justify-center p-4">
-        <div className="glass p-8 max-w-md w-full space-y-6 animate-fade-in">
-          <div className="text-center">
-            <Link href="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors">
-              ← Back
-            </Link>
-            <h1 className="heading-2 text-white">New Game</h1>
-            <p className="text-gray-400 text-sm mt-1">Configure your match</p>
-          </div>
-
-          {/* Board Size */}
-          <div className="space-y-2">
-            <label className="text-xs text-gray-500 uppercase tracking-wider font-mono">Board</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setBoardSize(3)}
-                className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                  boardSize === 3
-                    ? "bg-eclipse-600 text-white shadow-lg shadow-eclipse-600/25"
-                    : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600/50"
-                }`}
-              >
-                3×3 Tutorial
-              </button>
-              <button
-                onClick={() => setBoardSize(5)}
-                className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                  boardSize === 5
-                    ? "bg-eclipse-600 text-white shadow-lg shadow-eclipse-600/25"
-                    : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600/50"
-                }`}
-              >
-                5×5 Full
-              </button>
-            </div>
-          </div>
-
-          {/* Mode */}
-          <div className="space-y-2">
-            <label className="text-xs text-gray-500 uppercase tracking-wider font-mono">Mode</label>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setMode("pve")}
-                className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                  mode === "pve"
-                    ? "bg-eclipse-600 text-white shadow-lg shadow-eclipse-600/25"
-                    : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600/50"
-                }`}
-              >
-                vs AI
-              </button>
-              <button
-                onClick={() => setMode("pvp")}
-                className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                  mode === "pvp"
-                    ? "bg-eclipse-600 text-white shadow-lg shadow-eclipse-600/25"
-                    : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600/50"
-                }`}
-              >
-                Local PvP
-              </button>
-            </div>
-          </div>
-
-          {/* Difficulty (only for PvE) */}
-          {mode === "pve" && (
-            <div className="space-y-2">
-              <label className="text-xs text-gray-500 uppercase tracking-wider font-mono">AI Difficulty</label>
-              <div className="grid grid-cols-3 gap-2">
-                {([1, 2, 3] as const).map((d) => (
-                  <button
-                    key={d}
-                    onClick={() => setDifficulty(d)}
-                    className={`p-3 rounded-xl text-sm font-medium transition-all ${
-                      difficulty === d
-                        ? "bg-eclipse-600 text-white shadow-lg shadow-eclipse-600/25"
-                        : "bg-void-700/50 text-gray-400 hover:text-white hover:bg-void-600/50"
-                    }`}
-                  >
-                    {d === 1 ? "Novice" : d === 2 ? "Adept" : "Oracle"}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <button
-            onClick={() => {
-              game.newGame(boardSize, mode, difficulty);
-              setSetupDone(true);
-            }}
-            className="btn-primary w-full py-4 text-base"
-          >
-            Start Game
-          </button>
-        </div>
-      </main>
-    );
-  }
+  const begin = (setup: Setup) => {
+    game.start(setup);
+    setPhase("game");
+  };
 
   return (
-    <main className="min-h-screen flex flex-col">
-      {/* Top Bar */}
-      <nav className="flex items-center justify-between px-4 py-3 md:px-8">
-        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-eclipse-500 to-nebula-blue" />
-          <span className="font-display font-semibold text-sm hidden sm:inline">GRAHAN</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500 font-mono">
-            {boardSize}×{boardSize} · {mode === "pve" ? `AI ${["", "Novice", "Adept", "Oracle"][difficulty]}` : "PvP"}
-          </span>
-          <button
-            onClick={() => setSetupDone(false)}
-            className="text-xs text-gray-500 hover:text-white transition-colors px-3 py-1.5 rounded-lg border border-void-700/50 hover:border-void-500/50"
-          >
-            Settings
-          </button>
+    <>
+      <SiteNav />
+      {phase === "setup" ? (
+        <SetupScreen draft={draft} onChange={setDraft} onStart={() => begin(draft)} />
+      ) : (
+        <GameTable
+          game={game}
+          onRematch={() => begin(game.setup)}
+          onChangeSetup={() => {
+            setDraft(game.setup);
+            setPhase("setup");
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+// ─── Setup ──────────────────────────────────────────────────────────
+
+function Choice<T extends string | number>({
+  legend, name, value, options, onChange,
+}: {
+  legend: string;
+  name: string;
+  value: T;
+  options: { value: T; title: string; sub?: string }[];
+  onChange: (v: T) => void;
+}) {
+  return (
+    <fieldset className="choice">
+      <legend>{legend}</legend>
+      <div className="choice-row">
+        {options.map((o) => (
+          <label key={String(o.value)}>
+            <input type="radio" name={name} checked={value === o.value} onChange={() => onChange(o.value)} />
+            <span className="choice-title">{o.title}</span>
+            {o.sub && <span className="choice-sub">{o.sub}</span>}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
+function SetupScreen({ draft, onChange, onStart }: { draft: Setup; onChange: (s: Setup) => void; onStart: () => void }) {
+  const set = (patch: Partial<Setup>) => onChange({ ...draft, ...patch });
+  return (
+    <main className="page pb-16">
+      <form
+        className="plate mx-auto mt-4 flex max-w-2xl flex-col gap-7 p-6 md:p-9"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onStart();
+        }}
+      >
+        <div>
+          <h1 className="h-section">New game</h1>
+          <p className="muted mt-1">Rahu, the shadow, always moves first.</p>
         </div>
-      </nav>
 
-      {/* Game Area */}
-      <div className="flex-1 flex flex-col lg:flex-row items-start justify-center gap-6 p-4 md:p-8 max-w-6xl mx-auto w-full">
-        {/* Board */}
-        <div className="flex-1 w-full max-w-[600px]">
-          <GameCanvas
-            gameState={game.gameState}
-            selectedPoint={game.selectedPoint}
-            availableMoves={game.availableMoves}
-            captureAnimations={game.captureAnimations}
-            onPointClick={game.selectPoint}
-            onClearAnimations={game.clearAnimations}
-          />
+        <Choice<VariantId>
+          legend="Board Size"
+          name="variant"
+          value={draft.variant}
+          onChange={(variant) => set({ variant })}
+          options={[
+            { value: "grahan-6", title: "6 × 6", sub: "12 stones each, take 5 to win" },
+            { value: "grahan-7", title: "7 × 7", sub: "14 stones each, take 6 to win" },
+            { value: "grahan-8", title: "8 × 8", sub: "16 stones each, take 7 to win" },
+            { value: "grahan-9", title: "9 × 9", sub: "18 stones each, take 8 to win" },
+            { value: "grahan-10", title: "10 × 10", sub: "20 stones each, take 9 to win" },
+          ]}
+        />
 
-          {/* Mobile instruction hint */}
-          <p className="text-center text-xs text-gray-600 mt-3 lg:hidden">
-            {game.selectedPoint !== null
-              ? "Tap a green dot to move"
-              : game.gameState.turn === CellState.Black
-              ? "Tap a violet piece to select"
-              : mode === "pve"
-              ? "AI is thinking..."
-              : "Tap a gold piece to select"
-            }
-          </p>
+        <Choice
+          legend="Opponent"
+          name="opponent"
+          value={draft.opponent}
+          onChange={(opponent) => set({ opponent })}
+          options={[
+            { value: "computer", title: "Computer" },
+            { value: "friend", title: "A friend", sub: "Take turns on this device" },
+          ]}
+        />
+
+        {draft.opponent === "computer" && (
+          <>
+            <Choice
+              legend="Computer strength"
+              name="level"
+              value={draft.level}
+              onChange={(level) => set({ level: level as Level })}
+              options={([1, 2, 3] as const).map((l) => ({ value: l, title: LEVELS[l].name, sub: LEVELS[l].blurb }))}
+            />
+            <Choice
+              legend="You play"
+              name="side"
+              value={draft.human}
+              onChange={(human) => set({ human: human as Player })}
+              options={[
+                { value: RAHU, title: "Rahu", sub: "The shadow, moves first" },
+                { value: SURYA, title: "Surya", sub: "The sun, moves second" },
+              ]}
+            />
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          <button type="submit" className="btn btn-brass">Start game</button>
+          <Link href="/tutorial" className="btn btn-quiet">New here? Take the 3-minute lesson</Link>
         </div>
+      </form>
+    </main>
+  );
+}
 
-        {/* Sidebar */}
-        <div className="w-full lg:w-64 space-y-4">
-          <GameHUD
-            turn={game.gameState.turn}
-            captured={game.gameState.captured}
-            captureTarget={game.gameState.captureTarget}
-            ply={game.gameState.ply}
-            gameResult={game.gameResult}
-            isAIThinking={game.isAIThinking}
-            onNewGame={() => setSetupDone(false)}
-          />
+// ─── Game table ─────────────────────────────────────────────────────
 
-          {/* Quick Rules */}
-          <div className="glass-subtle p-4 space-y-2 hidden lg:block">
-            <h3 className="text-xs text-gray-500 uppercase tracking-wider font-mono">Quick Rules</h3>
-            <ul className="text-xs text-gray-400 space-y-1.5">
-              <li className="flex gap-2">
-                <span className="text-eclipse-400">→</span>
-                Click a piece, then click where to slide
-              </li>
-              <li className="flex gap-2">
-                <span className="text-eclipse-400">⊂⊃</span>
-                Sandwich enemies between your pieces to capture
-              </li>
-              <li className="flex gap-2">
-                <span className="text-eclipse-400">🏆</span>
-                Capture {game.gameState.captureTarget} stones to win
-              </li>
-              <li className="flex gap-2">
-                <span className="text-eclipse-400">∞</span>
-                Lines wrap around — the board is a torus!
-              </li>
-            </ul>
-          </div>
+type Game = ReturnType<typeof useGrahan>;
 
-          {/* Controls hint */}
-          <div className="glass-subtle p-4 hidden lg:block">
-            <p className="text-xs text-gray-500">
-              {game.selectedPoint !== null
-                ? "Click a highlighted green point to move, or click another piece to reselect."
-                : `Click one of your ${game.gameState.turn === CellState.Black ? "violet" : "gold"} pieces to see available moves.`
-              }
-            </p>
-          </div>
+function roleOf(game: Game, side: Player) {
+  if (game.setup.opponent === "friend") return side === RAHU ? "Player 1" : "Player 2";
+  return side === game.setup.human ? "You" : `Computer, ${LEVELS[game.setup.level].name}`;
+}
+
+function PlayerPlate({ game, side }: { game: Game; side: Player }) {
+  const target = game.state.variant.captureTarget;
+  const taken = game.state.captured[side === RAHU ? 0 : 1];
+  const active = !game.over && game.state.turn === side;
+  const enemy: Player = side === RAHU ? SURYA : RAHU;
+  const computer = game.setup.opponent === "computer" && side !== game.setup.human;
+  return (
+    <div className="player" data-active={active}>
+      <StoneIcon who={side} size={34} />
+      <div>
+        <div className="player-name">{playerName(side)}</div>
+        <div className="player-role">
+          {roleOf(game, side)}
+          {active && (computer ? ", thinking" : ", to move")}
         </div>
       </div>
+      <div className="tally" aria-label={`${taken} of ${target} enemy stones taken`}>
+        {Array.from({ length: target }, (_, i) => (
+          <StoneIcon key={i} who={enemy} size={22} eclipsed={i < taken} faded={i >= taken} />
+        ))}
+        <span className="muted ml-1 text-sm">{taken} of {target} taken</span>
+      </div>
+    </div>
+  );
+}
+
+type LogEntry = { text: string; caps: number };
+
+function MoveLog({ timeline }: { timeline: readonly GameState[] }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+  }, [timeline.length]);
+
+  const entries: LogEntry[] = timeline.slice(1).map((s) => ({ text: moveName(s.plane, s.lastMove!), caps: s.lastCaptured.length }));
+  const rows: { n: number; a?: LogEntry; b?: LogEntry }[] = [];
+  for (let i = 0; i < entries.length; i += 2) rows.push({ n: i / 2 + 1, a: entries[i], b: entries[i + 1] });
+
+  const cell = (e?: LogEntry) =>
+    e ? (
+      <span>
+        {e.text.replace(/ ×\d+$/, "")}
+        {e.caps > 0 && <span className="cap"> ×{e.caps}</span>}
+      </span>
+    ) : (
+      <span />
+    );
+
+  return (
+    <div className="plate move-log" ref={ref} aria-label="Moves played" tabIndex={0}>
+      {rows.length === 0 ? (
+        <p className="muted text-sm">Moves appear here.</p>
+      ) : (
+        <ol>
+          {rows.map((r) => (
+            <li key={r.n} className="contents">
+              <span className="num">{r.n}.</span>
+              {cell(r.a)}
+              {cell(r.b)}
+            </li>
+          ))}
+        </ol>
+      )}
+    </div>
+  );
+}
+
+function statusText(game: Game, showDanger: boolean): React.ReactNode {
+  const { state, setup } = game;
+  const name = playerName(state.turn);
+  if (game.over) return "Game over.";
+  if (game.thinking) return `${name} is thinking…`;
+  const vsComputer = setup.opponent === "computer";
+  const threatened = showDanger ? game.danger.size : 0;
+  const warn =
+    threatened > 0 ? (
+      <span className="text-sindoor">
+        {" "}
+        {threatened === 1 ? "One stone, ringed in red, can be taken." : `${threatened} stones, ringed in red, can be taken.`}
+      </span>
+    ) : null;
+  if (game.selected !== null) {
+    return game.targets.length > 0 ? (
+      <>Choose a ring to slide there, or pick another stone.{warn}</>
+    ) : (
+      <>That stone cannot move right now. Pick another.{warn}</>
+    );
+  }
+  return (
+    <>
+      {vsComputer ? "Your move." : `${name} to move.`} Pick one of {vsComputer ? "your" : `${name}’s`} stones.{warn}
+    </>
+  );
+}
+
+function ResultCard({ game, onRematch, onChangeSetup }: { game: Game; onRematch: () => void; onChangeSetup: () => void }) {
+  const { result, setup, state } = game;
+  const winner: Player | null = result.winner === "rahu" ? RAHU : result.winner === "surya" ? SURYA : null;
+  const winnerName = winner ? playerName(winner) : "";
+  const loserName = winner ? playerName(winner === RAHU ? SURYA : RAHU) : "";
+  const target = state.variant.captureTarget;
+
+  let title = "Drawn game";
+  if (winner) {
+    title = setup.opponent === "computer" && winner === setup.human ? "You win" : `${winnerName} wins`;
+  }
+  const reason =
+    result.reason === "target"
+      ? `${winnerName} eclipsed ${target} stones.`
+      : result.reason === "trapped"
+        ? `${loserName} had no legal move left.`
+        : winner
+          ? `The ${state.variant.maxPly}-turn limit was reached and ${winnerName} had more stones.`
+          : `The ${state.variant.maxPly}-turn limit was reached with equal stones.`;
+
+  return (
+    <div className="result" role="dialog" aria-labelledby="result-title">
+      <div className="result-card">
+        {winner && (
+          <div className="mb-3 flex justify-center">
+            <StoneIcon who={winner} size={56} />
+          </div>
+        )}
+        <h2 id="result-title" className="h-section">{title}</h2>
+        <p className="muted mt-2">{reason}</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <button className="btn btn-brass" onClick={onRematch}>Play again</button>
+          <button className="btn btn-line" onClick={onChangeSetup}>Change setup</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function GameTable({ game, onRematch, onChangeSetup }: { game: Game; onRematch: () => void; onChangeSetup: () => void }) {
+  const [showDanger, setShowDanger] = useState(true);
+  const soundOn = useSyncExternalStore(subscribeSound, getSoundEnabled, getSoundServerSnapshot);
+  const variant = VARIANTS[game.setup.variant];
+  const humanTurn = game.canAct;
+
+  return (
+    <main className="table">
+      <h1 className="sr-only">Grahan, {variant.q} by {variant.q}</h1>
+      <section className="table-board" aria-label="Board">
+        <Board
+          state={game.state}
+          selected={game.selected}
+          targets={game.targets}
+          danger={showDanger && humanTurn ? game.danger : null}
+          hint={game.hint}
+          interactive={humanTurn}
+          sound
+          onCellClick={game.clickCell}
+          onEscape={game.deselect}
+          onAnimating={game.setAnimating}
+        />
+        {game.over && <ResultCard game={game} onRematch={onRematch} onChangeSetup={onChangeSetup} />}
+      </section>
+
+      <aside className="almanac" aria-label="Game panel">
+        <PlayerPlate game={game} side={RAHU} />
+        <PlayerPlate game={game} side={SURYA} />
+
+        <p className="status" aria-live="polite">{statusText(game, showDanger)}</p>
+
+        <div className="toolbar" role="toolbar" aria-label="Game controls">
+          <button className="btn btn-quiet btn-sm" onClick={game.undo} disabled={!game.canUndo}>Undo</button>
+          <button className="btn btn-quiet btn-sm" onClick={game.askHint} disabled={!humanTurn || game.hinting}>
+            {game.hinting ? "Looking…" : "Hint"}
+          </button>
+          <button className="btn btn-quiet btn-sm" aria-pressed={showDanger} onClick={() => setShowDanger((d) => !d)}>
+            Show danger
+          </button>
+          <button className="btn btn-quiet btn-sm" aria-pressed={soundOn} onClick={() => setSoundEnabled(!soundOn)}>
+            Sound
+          </button>
+        </div>
+
+        <MoveLog timeline={game.timeline} />
+
+        <div className="flex flex-wrap gap-2">
+          <button className="btn btn-line btn-sm" onClick={onRematch}>Restart</button>
+          <button className="btn btn-quiet btn-sm" onClick={onChangeSetup}>Change setup</button>
+        </div>
+      </aside>
     </main>
   );
 }

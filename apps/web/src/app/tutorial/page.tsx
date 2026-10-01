@@ -1,225 +1,267 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import GameCanvas from "@/components/GameCanvas";
-import { useGame } from "@/hooks/useGame";
-import { CellState, GameResult, createGrahan3, slidesFrom, applyMove, legalMoves } from "@/lib/engine";
+import {
+  RAHU, applyMove, buildPlane, legalMovesFrom, newGame, positionFromRows,
+  type GameState, type Move, type VariantId,
+} from "@grahan/engine";
+import Board from "@/components/Board";
+import SiteNav from "@/components/SiteNav";
 
-// ─── Tutorial Steps ─────────────────────────────────────────────
-
-interface TutorialStep {
+interface Lesson {
   title: string;
-  description: string;
-  instruction: string;
-  highlight?: "board" | "pieces" | "lines" | "capture";
-  requireAction?: boolean;
+  text: string;
+  variant: VariantId;
+  rows?: string[];
+  marks?: string[];
+  /** Returns true when solved, or a short nudge explaining what to try instead. */
+  check?: (move: Move, after: GameState) => true | string;
+  success?: string;
 }
 
-const STEPS: TutorialStep[] = [
+const at = (name: string) => {
+  return buildPlane(6).point(name.charCodeAt(0) - 97, Number(name.slice(1)) - 1);
+};
+
+const LESSONS: Lesson[] = [
   {
-    title: "Welcome to GRAHAN",
-    description: "GRAHAN (ग्रहण, \"Eclipse\") is a strategy game played on a mathematical grid called an Affine Plane. Don't worry — you don't need to know the math to play!",
-    instruction: "Click \"Next\" to continue.",
+    title: "Your stones",
+    text:
+      "You play Rahu, the dark stones with a silver rim. Pick one of them. Rings appear on every point it can reach, and coloured lines show the straight lines and diagonals it can travel along. Then choose a ring to slide there.",
+    variant: "grahan-6",
+    check: () => true,
+    success: "That is a whole turn: one stone, one slide along one straight line or diagonal, as far as you like.",
   },
   {
-    title: "The Board",
-    description: "This 3×3 grid has 9 points. Your pieces are the violet orbs (Eclipse). Your opponent's are gold (Sol). The middle row starts empty.",
-    instruction: "Look at the board — each side has 3 pieces.",
-    highlight: "board",
+    title: "Straight lines & diagonals",
+    text:
+      "Stones slide in straight paths: horizontally, vertically, or diagonally. Movement is bounded by the edges of the board. Slide your stone from b3 to the star on e3.",
+    variant: "grahan-6",
+    rows: [
+      "......",
+      "......",
+      ".R....",
+      "......",
+      "......",
+      "......",
+    ],
+    marks: ["e3"],
+    check: (m) => (m.to === at("e3") ? true : "Try sliding straight right from b3 to e3."),
+    success: "Pieces slide smoothly along straight lines and stop at the board edges or before blocking stones.",
   },
   {
-    title: "Moving Pieces",
-    description: "Click one of your violet pieces to select it. You'll see green dots showing where you can slide to. Pieces slide along lines — horizontally, vertically, or diagonally.",
-    instruction: "Try clicking a violet piece to see its moves.",
-    highlight: "pieces",
-    requireAction: true,
+    title: "Eclipse a sun",
+    text:
+      "When your stone lands so that enemy stones sit in a straight row between it and another of your stones, those enemy stones are taken. Move a stone to c4 to take the sun on c3.",
+    variant: "grahan-6",
+    rows: [
+      "......",
+      "..R...",
+      "..S...",
+      "R.....",
+      "......",
+      "......",
+    ],
+    marks: ["c4"],
+    check: (_m, after) =>
+      after.lastCaptured.length > 0 ? true : "Put your stone on c4 so the sun on c3 sits between c2 and c4.",
+    success: "Eclipsed. Only the enemy stones between your two stones are taken, and only by the stone that just moved.",
   },
   {
-    title: "Lines Wrap Around!",
-    description: "This board is a torus — lines wrap around the edges! If you slide off the right side, you appear on the left. Same for top/bottom. The dashed colored lines show the geometric lines through your selected piece.",
-    instruction: "Notice how some lines connect to the opposite edge.",
-    highlight: "lines",
+    title: "Landing in a trap is safe",
+    text:
+      "Only the stone that moves can capture. Slide into the gap on c3, right between two suns. Nothing happens to you: they would have to move a stone away and back to take you.",
+    variant: "grahan-6",
+    rows: [
+      "......",
+      "..S...",
+      "R.....",
+      "..S...",
+      "......",
+      "......",
+    ],
+    marks: ["c3"],
+    check: (m) => (m.to === at("c3") ? true : "Slide the stone on a3 to the star on c3."),
+    success: "Safe. A sandwich only counts at the moment you close it yourself.",
   },
   {
-    title: "Making a Move",
-    description: "After selecting a piece, click any green dot to slide there. You can only slide to empty points, and you can't jump over other pieces.",
-    instruction: "Click a green dot to make your first move!",
-    requireAction: true,
+    title: "Two at once",
+    text:
+      "One landing can close sandwiches on several lines at the same time (e.g. horizontally and vertically). Find the move that takes both suns.",
+    variant: "grahan-6",
+    rows: [
+      "......",
+      "..R...",
+      "..S...",
+      "...SR.",
+      ".R....",
+      "......",
+    ],
+    marks: ["c4"],
+    check: (_m, after) =>
+      after.lastCaptured.length >= 2
+        ? true
+        : after.lastCaptured.length === 1
+          ? "One taken. Find the landing point that closes both lines at once."
+          : "Look for a point next to both suns.",
+    success: "A double eclipse. Look for intersection points where multiple lines converge.",
   },
   {
-    title: "Custodial Capture (\"Eclipse\")",
-    description: "The key mechanic! When your piece lands and creates a \"sandwich\" — your piece on both sides of enemy pieces along a line — you capture all the enemy pieces in between. This is the Eclipse!",
-    instruction: "Think: your piece + enemy pieces + your piece = capture!",
-    highlight: "capture",
-  },
-  {
-    title: "Capture Example",
-    description: "If your pieces are at positions A and C, and enemy pieces are at B (between A and C on the same line), moving to complete the sandwich captures B. Remember: only the piece that just moved triggers captures!",
-    instruction: "Moving INTO a sandwich doesn't get you captured — only the mover captures.",
-  },
-  {
-    title: "Winning the Game",
-    description: "On this 3×3 board, the first player to capture 2 enemy stones wins! On the full 5×5 board, you need 4 captures.",
-    instruction: "Keep playing to try and capture 2 stones!",
-  },
-  {
-    title: "Multiple Line Captures",
-    description: "A single move can trigger captures on multiple lines at once — this is called a \"Total Eclipse\"! Each of the lines through your landing point is checked independently.",
-    instruction: "Look for moves that sandwich on more than one line.",
-  },
-  {
-    title: "You're Ready!",
-    description: "That's everything you need to know! Select pieces, slide them along lines (they wrap around!), and sandwich enemies to capture. First to reach the capture target wins.",
-    instruction: "Continue playing, or head to the 5×5 board for the full experience!",
+    title: "How to win",
+    text:
+      "On this 6 × 6 board, take 5 stones to win! You also win if your opponent has no legal move. A position may never repeat (superko), so nobody can shuffle back and forth forever.",
+    variant: "grahan-6",
   },
 ];
 
-// ─── Tutorial Page ──────────────────────────────────────────────
+function startPosition(l: Lesson): GameState {
+  return l.rows ? positionFromRows(l.variant, l.rows, RAHU) : newGame(l.variant);
+}
 
 export default function TutorialPage() {
-  const [step, setStep] = useState(0);
-  const [hasInteracted, setHasInteracted] = useState(false);
-  const game = useGame(3, "pvp", 1);
+  const [index, setIndex] = useState(0);
+  const [done, setDone] = useState<ReadonlySet<number>>(new Set());
+  const [position, setPosition] = useState(() => startPosition(LESSONS[0]));
+  const [selected, setSelected] = useState<number | null>(null);
+  const [feedback, setFeedback] = useState<{ kind: "good" | "bad"; text: string } | null>(null);
+  const [solved, setSolved] = useState(false);
+  const resetTimer = useRef<number | undefined>(undefined);
 
-  const currentStep = STEPS[step];
-  const isLastStep = step === STEPS.length - 1;
+  const lesson = LESSONS[index];
+  const targets = useMemo(
+    () => (selected !== null && !solved ? legalMovesFrom(position, selected) : []),
+    [position, selected, solved],
+  );
 
-  const canProceed = !currentStep.requireAction || hasInteracted;
+  const goTo = (i: number) => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setIndex(i);
+    setPosition(startPosition(LESSONS[i]));
+    setSelected(null);
+    setFeedback(null);
+    setSolved(false);
+  };
 
-  // Track interaction for steps that require it
-  useEffect(() => {
-    if (game.selectedPoint !== null || game.gameState.ply > 0) {
-      setHasInteracted(true);
+  const next = () => {
+    if (index + 1 < LESSONS.length) goTo(index + 1);
+  };
+
+  const prev = () => {
+    if (index > 0) goTo(index - 1);
+  };
+
+  const restartLesson = () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+    setPosition(startPosition(lesson));
+    setSelected(null);
+    setFeedback(null);
+    setSolved(false);
+  };
+
+  const onCellClick = (cell: number) => {
+    if (solved) return;
+    if (selected !== null) {
+      const m = targets.find((t) => t.to === cell);
+      if (m) {
+        const after = applyMove(position, m);
+        setPosition(after);
+        setSelected(null);
+        if (lesson.check) {
+          const res = lesson.check(m, after);
+          if (res === true) {
+            setFeedback({ kind: "good", text: lesson.success ?? "Well played." });
+            setSolved(true);
+            setDone((d) => new Set([...d, index]));
+          } else {
+            setFeedback({ kind: "bad", text: res });
+            resetTimer.current = window.setTimeout(restartLesson, 2200);
+          }
+        }
+        return;
+      }
     }
-  }, [game.selectedPoint, game.gameState.ply]);
-
-  const nextStep = useCallback(() => {
-    if (step < STEPS.length - 1) {
-      setStep(s => s + 1);
-      setHasInteracted(false);
+    if (position.board[cell] === RAHU && cell !== selected) {
+      setSelected(cell);
+      setFeedback(null);
+    } else {
+      setSelected(null);
     }
-  }, [step]);
+  };
 
-  const prevStep = useCallback(() => {
-    if (step > 0) {
-      setStep(s => s - 1);
-      setHasInteracted(false);
-    }
-  }, [step]);
+  const marks = useMemo(() => (lesson.marks ?? []).map((m) => at(m)), [lesson]);
 
   return (
-    <main className="min-h-screen flex flex-col">
-      {/* Top Bar */}
-      <nav className="flex items-center justify-between px-4 py-3 md:px-8">
-        <Link href="/" className="flex items-center gap-2 text-gray-400 hover:text-white text-sm transition-colors">
-          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-eclipse-500 to-nebula-blue" />
-          <span className="font-display font-semibold text-sm hidden sm:inline">GRAHAN</span>
-        </Link>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500 font-mono">
-            Tutorial · Step {step + 1}/{STEPS.length}
-          </span>
-          <Link href="/play" className="btn-ghost text-xs px-3 py-1.5">
-            Skip to Game →
-          </Link>
-        </div>
-      </nav>
-
-      <div className="flex-1 flex flex-col lg:flex-row items-start justify-center gap-6 p-4 md:p-8 max-w-6xl mx-auto w-full">
-        {/* Board */}
-        <div className="flex-1 w-full max-w-[500px]">
-          <GameCanvas
-            gameState={game.gameState}
-            selectedPoint={game.selectedPoint}
-            availableMoves={game.availableMoves}
-            captureAnimations={game.captureAnimations}
-            onPointClick={game.selectPoint}
-            onClearAnimations={game.clearAnimations}
+    <>
+      <SiteNav />
+      <main className="table">
+        <h1 className="sr-only">Grahan lesson {index + 1}: {lesson.title}</h1>
+        <section className="table-board" aria-label="Interactive board">
+          <Board
+            state={position}
+            selected={selected}
+            targets={targets}
+            marks={marks}
+            interactive={!solved && Boolean(lesson.check)}
+            sound
+            label={`Lesson board: ${lesson.title}`}
+            onCellClick={onCellClick}
+            onEscape={() => setSelected(null)}
           />
-        </div>
+        </section>
 
-        {/* Tutorial Panel */}
-        <div className="w-full lg:w-80 space-y-4">
-          {/* Progress bar */}
-          <div className="flex gap-1">
-            {STEPS.map((_, i) => (
+        <aside className="almanac flex flex-col justify-between" aria-label="Lesson panel">
+          <div>
+            <nav className="lesson-tabs" aria-label="Lessons">
+              {LESSONS.map((l, i) => (
+                <button
+                  key={l.title}
+                  className="lesson-tab"
+                  aria-current={i === index ? "step" : undefined}
+                  onClick={() => goTo(i)}
+                  title={`${i + 1}. ${l.title}`}
+                >
+                  <span className="sr-only">{i + 1}. {l.title}</span>
+                  {done.has(i) ? "✓" : i + 1}
+                </button>
+              ))}
+            </nav>
+
+            <p className="lesson-badge">Lesson {index + 1} of {LESSONS.length}</p>
+            <h2 className="h-section mt-1">{lesson.title}</h2>
+            <p className="muted mt-3">{lesson.text}</p>
+
+            {feedback && (
               <div
-                key={i}
-                className={`h-1 flex-1 rounded-full transition-all duration-300 ${
-                  i <= step ? "bg-eclipse-500" : "bg-void-700"
-                }`}
-              />
-            ))}
-          </div>
-
-          {/* Content Card */}
-          <div className="tutorial-callout animate-fade-in" key={step}>
-            <h2 className="heading-3 text-white mb-3">{currentStep.title}</h2>
-            <p className="text-gray-300 text-sm leading-relaxed mb-4">
-              {currentStep.description}
-            </p>
-            <div className="flex items-start gap-2 p-3 bg-void-900/60 rounded-lg">
-              <span className="text-eclipse-400 text-sm mt-0.5">💡</span>
-              <p className="text-xs text-gray-400 leading-relaxed">
-                {currentStep.instruction}
-              </p>
-            </div>
-          </div>
-
-          {/* Navigation */}
-          <div className="flex gap-2">
-            <button
-              onClick={prevStep}
-              disabled={step === 0}
-              className="btn-ghost flex-1 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              ← Back
-            </button>
-            {isLastStep ? (
-              <Link href="/play" className="btn-primary flex-1 text-center">
-                Play 5×5 →
-              </Link>
-            ) : (
-              <button
-                onClick={nextStep}
-                disabled={!canProceed}
-                className={`btn-primary flex-1 ${!canProceed ? "opacity-50" : ""}`}
+                className={`feedback mt-4 ${feedback.kind === "good" ? "feedback-good" : "feedback-bad"}`}
+                role="status"
               >
-                Next →
-              </button>
+                {feedback.text}
+              </div>
             )}
           </div>
 
-          {/* Game state info */}
-          <div className="glass-subtle p-4 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500">Turn</span>
-              <span className={game.gameState.turn === CellState.Black ? "text-player-black" : "text-player-white"}>
-                {game.gameState.turn === CellState.Black ? "Eclipse (You)" : "Sol (Opponent)"}
-              </span>
+          <div className="mt-8 flex flex-col gap-3">
+            <div className="flex flex-wrap gap-2">
+              {index > 0 && (
+                <button className="btn btn-quiet btn-sm" onClick={prev}>Previous</button>
+              )}
+              {Boolean(lesson.check) && (
+                <button className="btn btn-quiet btn-sm" onClick={restartLesson}>Reset</button>
+              )}
+              {index + 1 < LESSONS.length && (
+                <button className={`btn btn-sm ${solved ? "btn-brass" : "btn-line"}`} onClick={next}>
+                  {solved ? "Next lesson →" : "Skip →"}
+                </button>
+              )}
+              {index + 1 === LESSONS.length && (
+                <Link href="/play" className="btn btn-brass">Play a game now →</Link>
+              )}
             </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500">Captures</span>
-              <span className="text-gray-300 font-mono">
-                {game.gameState.captured[0]} – {game.gameState.captured[1]}
-              </span>
-            </div>
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-gray-500">Goal</span>
-              <span className="text-gray-300">Capture 2 stones</span>
-            </div>
+            <p className="caption">You can skip back and forth between lessons at any time.</p>
           </div>
-
-          {/* Reset tutorial game */}
-          <button
-            onClick={() => game.newGame(3, "pvp", 1)}
-            className="w-full text-xs text-gray-500 hover:text-gray-300 transition-colors py-2"
-          >
-            Reset board
-          </button>
-        </div>
-      </div>
-    </main>
+        </aside>
+      </main>
+    </>
   );
 }

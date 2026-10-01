@@ -58,14 +58,8 @@ export interface IncidenceStructure {
   lineThrough(p1: number, p2: number): number;
 
   /**
-   * Returns all distinct points adjacent to `pointId` across all lines.
-   * A point is adjacent if it is one step away on any line through pointId.
-   * Returns exactly 2(q+1) neighbors (since each of q+1 lines contributes
-   * exactly 2 neighbors: one in each direction along the cycle).
-   *
-   * Note: For q ≤ 3, some neighbors may repeat across lines, but the
-   * specification states 2(q+1) due to vertex-transitivity in general.
-   * We return all unique neighbors.
+   * Returns all distinct points adjacent to `pointId` across all straight lines.
+   * Only considers lines that are visually straight on the grid.
    */
   neighbors(pointId: number): readonly number[];
 
@@ -79,6 +73,14 @@ export interface IncidenceStructure {
    * Returns all q line IDs in a given parallel class.
    */
   parallelClass(slopeIndex: number): readonly number[];
+
+  /**
+   * Returns true if the line has visually straight movement on the grid.
+   * A line is straight if consecutive points in its array differ by at most
+   * 1 in each coordinate (accounting for toroidal wrap).
+   * For q=3, all lines are straight. For q=5, slopes 2 and 3 are NOT straight.
+   */
+  isLineStraight(lineId: number): boolean;
 
   /**
    * Returns the underlying field used for this plane.
@@ -175,18 +177,50 @@ export function buildAffinePlane(field: Field): IncidenceStructure {
     }
   }
 
-  // ── Precompute neighbor sets ──
+  // ── Precompute which lines are visually straight ──
+  // A line is straight if consecutive points differ by at most 1 in each
+  // coordinate (accounting for toroidal wrap).
+  const lineStraightMap: boolean[] = new Array(numLines);
+  for (let lid = 0; lid < numLines; lid++) {
+    const pts = linePointsMap[lid];
+    if (pts.length < 2) {
+      lineStraightMap[lid] = true;
+      continue;
+    }
+    const x0 = pts[0] % q, y0 = Math.floor(pts[0] / q);
+    const x1 = pts[1] % q, y1 = Math.floor(pts[1] / q);
+    let dx = ((x1 - x0) % q + q) % q;
+    let dy = ((y1 - y0) % q + q) % q;
+    if (dx > q / 2) dx -= q;
+    if (dy > q / 2) dy -= q;
+    lineStraightMap[lid] = Math.abs(dx) <= 1 && Math.abs(dy) <= 1;
+  }
+
+  // ── Precompute neighbor sets (only physically adjacent points on grid, no toroidal wrap) ──
   const neighborsMap: number[][] = new Array(numPoints);
   for (let pid = 0; pid < numPoints; pid++) {
     const neighborSet = new Set<number>();
+    const px = pid % q;
+    const py = Math.floor(pid / q);
     for (const lid of linesOfPoint[pid]) {
+      if (!lineStraightMap[lid]) continue;
       const pts = linePointsMap[lid];
       const idx = pts.indexOf(pid);
-      // Two neighbors on the cycle: one step forward, one step backward
-      const next = pts[(idx + 1) % q];
-      const prev = pts[(idx - 1 + q) % q];
-      neighborSet.add(next);
-      neighborSet.add(prev);
+      for (const dir of [1, -1]) {
+        const nextIdx = ((idx + dir) % q + q) % q;
+        const nextPt = pts[nextIdx];
+        const nx = nextPt % q;
+        const ny = Math.floor(nextPt / q);
+        let dx = (nx - px + q) % q;
+        let dy = (ny - py + q) % q;
+        if (dx > q / 2) dx -= q;
+        if (dy > q / 2) dy -= q;
+        const cx = px + dx;
+        const cy = py + dy;
+        if (cx >= 0 && cx < q && cy >= 0 && cy < q) {
+          neighborSet.add(cy * q + cx);
+        }
+      }
     }
     neighborsMap[pid] = Array.from(neighborSet);
   }
@@ -240,6 +274,10 @@ export function buildAffinePlane(field: Field): IncidenceStructure {
 
     parallelClass(slopeIndex: number): readonly number[] {
       return parallelClassMap[slopeIndex];
+    },
+
+    isLineStraight(lineId: number): boolean {
+      return lineStraightMap[lineId];
     },
   };
 }

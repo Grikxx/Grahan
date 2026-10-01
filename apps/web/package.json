@@ -1,17 +1,21 @@
 {
-  "name": "web",
+  "name": "@grahan/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "predev": "node scripts/build-worker.mjs",
     "dev": "next dev",
+    "prebuild": "node scripts/build-worker.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "worker": "node scripts/build-worker.mjs --watch"
   },
   "dependencies": {
     "next": "16.3.6",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "@grahan/engine": "*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -21,6 +25,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "esbuild": "^0.21.5"
   }
 }

@@ -1,247 +1,107 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { applyMove, newGame, outcome, type GameState } from "@grahan/engine";
+import Board from "@/components/Board";
+import SiteNav from "@/components/SiteNav";
+import { requestMove } from "@/lib/ai-client";
 
-/* ─── Star Field Background ──────────────────────────────────── */
-
-function StarField() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+/** Two computer players, playing forever in the hero on 6x6. */
+function DemoBoard() {
+  const [state, setState] = useState<GameState>(() => newGame("grahan-6"));
 
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animId: number;
-    const stars: { x: number; y: number; r: number; speed: number; opacity: number; phase: number }[] = [];
-
-    function resize() {
-      canvas!.width = window.innerWidth;
-      canvas!.height = window.innerHeight;
+    let cancelled = false;
+    let timer: number | undefined;
+    if (outcome(state).winner !== null) {
+      timer = window.setTimeout(() => setState(newGame("grahan-6")), 3500);
+    } else {
+      requestMove(state, { maxDepth: 2, timeMs: 250, noise: 120 }, 1300).then((move) => {
+        if (!cancelled && move) setState(applyMove(state, move));
+      });
     }
-
-    function init() {
-      resize();
-      stars.length = 0;
-      for (let i = 0; i < 200; i++) {
-        stars.push({
-          x: Math.random() * canvas!.width,
-          y: Math.random() * canvas!.height,
-          r: Math.random() * 1.5 + 0.3,
-          speed: Math.random() * 0.3 + 0.05,
-          opacity: Math.random() * 0.7 + 0.3,
-          phase: Math.random() * Math.PI * 2,
-        });
-      }
-    }
-
-    function draw(time: number) {
-      ctx!.clearRect(0, 0, canvas!.width, canvas!.height);
-      for (const star of stars) {
-        const twinkle = Math.sin(time * 0.001 * star.speed + star.phase) * 0.3 + 0.7;
-        ctx!.beginPath();
-        ctx!.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-        ctx!.fillStyle = `rgba(200, 200, 255, ${star.opacity * twinkle})`;
-        ctx!.fill();
-
-        // Subtle glow
-        if (star.r > 1) {
-          ctx!.beginPath();
-          ctx!.arc(star.x, star.y, star.r * 3, 0, Math.PI * 2);
-          ctx!.fillStyle = `rgba(167, 139, 250, ${0.05 * twinkle})`;
-          ctx!.fill();
-        }
-      }
-      animId = requestAnimationFrame(draw);
-    }
-
-    init();
-    animId = requestAnimationFrame(draw);
-    window.addEventListener("resize", resize);
     return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
+      cancelled = true;
+      if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [state]);
 
-  return <canvas ref={canvasRef} className="fixed inset-0 z-0 pointer-events-none" />;
+  return <Board state={state} interactive={false} label="Demonstration game between two computer players" />;
 }
-
-/* ─── Eclipse Ring Animation ─────────────────────────────────── */
-
-function EclipseOrb() {
-  return (
-    <div className="relative w-48 h-48 md:w-64 md:h-64 mx-auto my-12">
-      {/* Outer glow */}
-      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-eclipse-500/20 via-nebula-blue/10 to-transparent blur-3xl animate-pulse-slow" />
-      {/* Ring */}
-      <div className="absolute inset-4 rounded-full border-2 border-eclipse-400/30 animate-[spin_20s_linear_infinite]" />
-      <div className="absolute inset-8 rounded-full border border-eclipse-500/20 animate-[spin_15s_linear_infinite_reverse]" />
-      {/* Core */}
-      <div className="absolute inset-12 rounded-full bg-gradient-radial from-void-800 via-void-900 to-void-950 shadow-2xl shadow-eclipse-600/20" />
-      {/* Corona */}
-      <div className="absolute inset-10 rounded-full border border-sol/20 animate-glow" />
-      {/* Label */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-4xl md:text-5xl font-display font-bold text-gradient select-none">
-          ग्रहण
-        </span>
-      </div>
-    </div>
-  );
-}
-
-/* ─── Feature Card ───────────────────────────────────────────── */
-
-function FeatureCard({
-  icon,
-  title,
-  description,
-  delay,
-}: {
-  icon: string;
-  title: string;
-  description: string;
-  delay: number;
-}) {
-  return (
-    <div
-      className="glass glow-border p-6 space-y-3 animate-fade-in"
-      style={{ animationDelay: `${delay}ms` }}
-    >
-      <div className="text-3xl">{icon}</div>
-      <h3 className="heading-3 text-white">{title}</h3>
-      <p className="text-gray-400 text-sm leading-relaxed">{description}</p>
-    </div>
-  );
-}
-
-/* ─── Main Landing Page ──────────────────────────────────────── */
 
 export default function HomePage() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-
   return (
-    <main className="relative min-h-screen overflow-hidden">
-      <StarField />
-
-      {/* Navigation */}
-      <nav className="relative z-10 flex items-center justify-between px-6 py-4 md:px-12">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-eclipse-500 to-nebula-blue shadow-lg shadow-eclipse-500/30" />
-          <span className="font-display font-semibold text-lg tracking-tight">GRAHAN</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <Link href="/tutorial" className="btn-ghost text-xs md:text-sm">
-            Learn
-          </Link>
-          <Link href="/play" className="btn-primary text-xs md:text-sm">
-            Play
-          </Link>
-        </div>
-      </nav>
-
-      {/* Hero */}
-      <section className="relative z-10 section text-center pt-8 md:pt-16">
-        <div
-          className={`transition-all duration-1000 ${
-            mounted ? "opacity-100 translate-y-0" : "opacity-0 translate-y-8"
-          }`}
-        >
-          <p className="text-eclipse-400 font-mono text-xs tracking-widest uppercase mb-4">
-            Abstract Strategy on Finite Geometry
-          </p>
-          <h1 className="heading-1 text-white mb-4">
-            GRAHAN
-          </h1>
-          <p className="text-gray-400 text-lg md:text-xl max-w-2xl mx-auto leading-relaxed">
-            Capture your opponent&apos;s stones through{" "}
-            <span className="text-eclipse-300">geometric eclipses</span> on a
-            toroidal plane defined by{" "}
-            <span className="text-nebula-blue">Galois field arithmetic</span>.
-          </p>
-        </div>
-
-        <EclipseOrb />
-
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
-          <Link href="/play" className="btn-primary px-8 py-4 text-base">
-            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z" />
-            </svg>
-            Start Playing
-          </Link>
-          <Link href="/tutorial" className="btn-ghost px-8 py-4 text-base">
-            How to Play
-          </Link>
-        </div>
-      </section>
-
-      {/* Features */}
-      <section className="relative z-10 section">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <FeatureCard
-            icon="🌀"
-            title="Toroidal Topology"
-            description="Lines wrap around the board edges. Every point is equal — no corners, no center, no advantage."
-            delay={100}
-          />
-          <FeatureCard
-            icon="🌑"
-            title="Custodial Capture"
-            description="Sandwich enemy stones between yours along geometric lines. One move can trigger captures on multiple lines simultaneously."
-            delay={200}
-          />
-          <FeatureCard
-            icon="🧮"
-            title="Galois Field Math"
-            description="The board is an affine plane AG(2,q) over a finite field. Every line has exactly q points, and q+1 lines pass through every point."
-            delay={300}
-          />
-        </div>
-      </section>
-
-      {/* Game Modes */}
-      <section className="relative z-10 section">
-        <h2 className="heading-2 text-center text-white mb-8">Choose Your Board</h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          <Link
-            href="/tutorial"
-            className="glass glow-border p-8 text-center group transition-all hover:scale-[1.02] hover:border-eclipse-500/40"
-          >
-            <div className="text-5xl mb-4">3×3</div>
-            <h3 className="heading-3 text-white mb-2">Grahan-3</h3>
-            <p className="text-gray-400 text-sm">
-              9 points · 12 lines · Tutorial mode
+    <>
+      <SiteNav />
+      <main>
+        <section className="hero">
+          <span className="hero-glyph" aria-hidden="true">ग्रहण</span>
+          <div className="hero-copy">
+            <h1 className="h-hero">Grahan</h1>
+            <p className="lede mt-6">
+              A game of shadows and suns. Slide your stones along straight lines and diagonals across the board.
+              Catch an enemy between two of yours and it is eclipsed.
             </p>
-            <p className="text-eclipse-400 text-xs mt-2 font-mono">
-              Fully solved by The Oracle
-            </p>
-          </Link>
-          <Link
-            href="/play"
-            className="glass glow-border p-8 text-center group transition-all hover:scale-[1.02] hover:border-sol/40"
-          >
-            <div className="text-5xl mb-4">5×5</div>
-            <h3 className="heading-3 text-white mb-2">Grahan-5</h3>
-            <p className="text-gray-400 text-sm">
-              25 points · 30 lines · Full game
-            </p>
-            <p className="text-sol text-xs mt-2 font-mono">
-              Against AI or another player
-            </p>
-          </Link>
-        </div>
-      </section>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href="/play" className="btn btn-brass">Play now</Link>
+              <Link href="/tutorial" className="btn btn-line">Learn in 3 minutes</Link>
+            </div>
+          </div>
+          <figure className="hero-board">
+            <DemoBoard />
+            <figcaption className="caption">Two computer players, live on the 6 × 6 board.</figcaption>
+          </figure>
+        </section>
 
-      {/* Footer */}
-      <footer className="relative z-10 text-center py-12 text-gray-600 text-xs font-mono">
-        <p>GRAHAN · ग्रहण · Eclipse</p>
-        <p className="mt-1">Built on discrete mathematics and finite geometry</p>
+        <hr className="rule-brass mx-auto max-w-5xl" />
+
+        <section className="three-rules" aria-label="The rules in brief">
+          <div>
+            <h2 className="h-small">Slide</h2>
+            <p className="muted mt-2">
+              On your turn, move one stone any distance along a line: across, down, or diagonal.
+              Stones move straight and never jump over others.
+            </p>
+          </div>
+          <div>
+            <h2 className="h-small">Grid</h2>
+            <p className="muted mt-2">
+              Movement stops at the board edges. Choose board sizes from 6 × 6 up to 10 × 10,
+              each starting with two full ranks of stones per side.
+            </p>
+          </div>
+          <div>
+            <h2 className="h-small">Eclipse</h2>
+            <p className="muted mt-2">
+              Land so that enemy stones sit between two of yours along a straight line or diagonal, and they are taken.
+              Reach the capture target to win.
+            </p>
+          </div>
+        </section>
+
+        <section className="page pb-8">
+          <div className="plate grid gap-6 p-6 md:grid-cols-[1fr_1.4fr] md:p-10">
+            <h2 className="h-section">Cosmic Harmony & Geometry</h2>
+            <div className="prose-col muted">
+              <p>
+                Rahu, the shadow, commands the dark orbs and always strikes first. Surya, the sun, commands
+                the radiant gold pieces. Both sides begin positioned across from each other in double ranks.
+              </p>
+              <p>
+                Pieces slide in continuous straight trajectories — horizontally, vertically, and diagonally —
+                seeking cross-fire positions where multiple enemy stones can be eclipsed in a single decisive turn.
+              </p>
+              <p className="mt-4">
+                <Link href="/about" className="text-brass underline underline-offset-4">Read the full rules</Link>
+              </p>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer className="site-footer">
+        Grahan (ग्रहण) means eclipse. In the ancient lore the shadow Rahu chases the sun across the sky.
       </footer>
-    </main>
+    </>
   );
 }

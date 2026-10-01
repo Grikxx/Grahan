@@ -41,20 +41,36 @@ function countThreats(state: GameState, player: Player): number {
 
   for (let pt = 0; pt < plane.numPoints; pt++) {
     if (board[pt] !== player) continue;
+    const px = pt % q;
+    const py = Math.floor(pt / q);
 
     const lines = plane.linesThrough(pt);
     for (const lineId of lines) {
+      // Only count threats along visually straight lines
+      if (!plane.isLineStraight(lineId)) continue;
       const pts = plane.linePoints(lineId);
       const myIdx = pts.indexOf(pt);
 
-      // Check both directions
+      // Check both directions within grid bounds
       for (const dir of [1, -1] as const) {
-        // Look for: [friendly] [enemy...] [empty]
-        // The empty cell is where a friendly could land to complete capture
+        const nextIdx = ((myIdx + dir) % q + q) % q;
+        const nextPt = pts[nextIdx];
+        const nx = nextPt % q;
+        const ny = Math.floor(nextPt / q);
+        let dx = (nx - px + q) % q;
+        let dy = (ny - py + q) % q;
+        if (dx > q / 2) dx -= q;
+        if (dy > q / 2) dy -= q;
+
+        // Look for: [friendly] [enemy...] [empty] within grid bounds
         let hasEnemyRun = false;
+        let cx = px;
+        let cy = py;
         for (let step = 1; step < q; step++) {
-          const checkIdx = ((myIdx + dir * step) % q + q) % q;
-          const checkPt = pts[checkIdx];
+          cx += dx;
+          cy += dy;
+          if (cx < 0 || cx >= q || cy < 0 || cy >= q) break;
+          const checkPt = cy * q + cx;
 
           if (board[checkPt] === enemy) {
             hasEnemyRun = true;

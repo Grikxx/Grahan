@@ -1,22 +1,25 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "GRAHAN — Eclipse Strategy",
-  description: "A mathematical strategy game played on affine planes over Galois Fields. Capture through geometric lines on a toroidal topology.",
-  keywords: ["strategy game", "abstract game", "finite geometry", "Galois fields", "board game"],
+  title: {
+    default: "Grahan — a game of shadows and suns",
+    template: "%s · Grahan",
+  },
+  description:
+    "Grahan is a two-player strategy game. Slide stones along straight lines and diagonals, trap enemies between two of yours, and eclipse them.",
+  keywords: ["strategy game", "abstract game", "board game", "grahan", "finite geometry"],
 };
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export const viewport: Viewport = {
+  themeColor: "#15112e",
+  colorScheme: "dark",
+};
+
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className="dark">
-      <body>
-        {children}
-      </body>
+    <html lang="en">
+      <body>{children}</body>
     </html>
   );
 }

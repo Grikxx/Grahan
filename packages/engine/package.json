@@ -1,13 +1,15 @@
 {
   "name": "@grahan/engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "description": "GRAHAN rules engine and AI: straight line and diagonal movement, custodial capture, superko and negamax search.",
   "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "vitest run"
-  },
-  "dependencies": {
-    "@grahan/math": "*"
   }
 }

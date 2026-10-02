@@ -37,14 +37,7 @@ grahan/
 1. **Board:** A q×q grid where all lines wrap around (torus topology)
 2. **Move:** Slide a stone along any geometric line to an empty point (no jumping)
 3. **Capture:** When your stone lands and sandwiches enemy stones between yours along a line, those enemies are captured
-4. **Win:** Capture enough stones (2 on 3×3, 4 on 5×5) or trap your opponent
-
-## Boards
-
-| Variant | Grid | Points | Lines | Pieces/Side | Capture Target |
-|---------|------|--------|-------|-------------|----------------|
-| Grahan-3 | 3×3 | 9 | 12 | 3 | 2 |
-| Grahan-5 | 5×5 | 25 | 30 | 10 | 4 |
+4. **Win:** Capture enough stones or trap your opponent
 
 ## Tech Stack
 

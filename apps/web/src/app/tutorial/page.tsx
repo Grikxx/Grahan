@@ -69,9 +69,9 @@ const LESSONS: Lesson[] = [
     success: "Eclipsed. Only the enemy stones between your two stones are taken, and only by the stone that just moved.",
   },
   {
-    title: "Beware the trap",
+    title: "Beware of Rule",
     text:
-      "If you slide your stone directly between two enemy stones on c3, you will be captured! Slide to the star on b3 instead to stay safe and threaten the suns.",
+      "If you slide your stone directly between two enemy stones on c3, you will not be captured! ",
     variant: "grahan-6",
     rows: [
       "......",

@@ -7,8 +7,9 @@
  *     through it, any distance, to an empty point. Movement is bounded by the
  *     board edges (no wrapping). Stones cannot jump over other stones.
  *  2. After landing, look along every straight ray out of the landing point.
- *     A run of enemy stones closed off by one of your stones is captured. Only the
- *     stone that moved can capture, so sliding between two enemies is safe.
+ *     A run of enemy stones closed off by one of your stones is captured.
+ *     If you slide a stone between two enemy stones, it is captured by the
+ *     opponent.
  *  3. Positional superko: a move may not recreate a position (board + side to
  *     move) that has already occurred in the game.
  *  4. You win by reaching the capture target, or when your opponent has no
@@ -281,26 +282,106 @@ export function findCaptures(board: Uint8Array, plane: Plane, landing: number, m
   return out;
 }
 
+export interface InterpositionBracket {
+  readonly lineId: number;
+  readonly anchors: readonly [number, number];
+  readonly cells: readonly number[];
+}
+
+/**
+ * Finds sandwiches where friendly stones at `landing` (and any adjacent allied run)
+ * have been placed or closed between two enemy stones along a line.
+ * In custodial capture, if a player puts their stone between two enemy stones,
+ * the enemy captures that stone (and the flanked allied run).
+ */
+export function findInterpositionCaptures(
+  board: Uint8Array,
+  plane: Plane,
+  landing: number,
+  mover: Player,
+): InterpositionBracket[] {
+  const enemy = other(mover);
+  const out: InterpositionBracket[] = [];
+  const raysByLine = new Map<number, { cells: readonly number[] }[]>();
+  for (const ray of plane.captureRays[landing]) {
+    let list = raysByLine.get(ray.lineId);
+    if (!list) {
+      list = [];
+      raysByLine.set(ray.lineId, list);
+    }
+    list.push(ray);
+  }
+
+  for (const [lineId, rays] of raysByLine) {
+    if (rays.length < 2) continue;
+    const [rayA, rayB] = rays;
+
+    let i = 0;
+    while (i < rayA.cells.length && board[rayA.cells[i]] === mover) i++;
+    if (i >= rayA.cells.length || board[rayA.cells[i]] !== enemy) continue;
+
+    let j = 0;
+    while (j < rayB.cells.length && board[rayB.cells[j]] === mover) j++;
+    if (j >= rayB.cells.length || board[rayB.cells[j]] !== enemy) continue;
+
+    out.push({
+      lineId,
+      anchors: [rayA.cells[i], rayB.cells[j]],
+      cells: [...rayA.cells.slice(0, i), landing, ...rayB.cells.slice(0, j)],
+    });
+  }
+
+  return out;
+}
+
 /** Applies a move without checking legality. */
 export function applyMove(state: GameState, move: Move): GameState {
   const { plane, turn } = state;
   const board = new Uint8Array(state.board);
   board[move.from] = EMPTY;
   board[move.to] = turn;
+
+  // 1. Active captures: mover sandwiches enemy stones
   const brackets = findCaptures(board, plane, move.to, turn);
   const taken: number[] = [];
   for (const b of brackets) {
     for (const c of b.cells) {
-      board[c] = EMPTY;
-      taken.push(c);
+      if (board[c] !== EMPTY) {
+        board[c] = EMPTY;
+        taken.push(c);
+      }
     }
   }
+
+  // 2. Interposition captures: mover puts piece between two enemy stones
+  const interBrackets = findInterpositionCaptures(board, plane, move.to, turn);
+  const selfTaken: number[] = [];
+  for (const ib of interBrackets) {
+    for (const c of ib.cells) {
+      if (board[c] !== EMPTY) {
+        board[c] = EMPTY;
+        selfTaken.push(c);
+      }
+    }
+  }
+
   const next = other(turn);
   const captured: [number, number] = [state.captured[0], state.captured[1]];
   captured[turn === RAHU ? 0 : 1] += taken.length;
+  captured[next === RAHU ? 0 : 1] += selfTaken.length;
+
   const key = positionKey(board, next, plane);
   const seen = new Set(state.seen);
   seen.add(key);
+
+  const combinedBrackets: Bracket[] = [
+    ...brackets,
+    ...interBrackets.flatMap((ib) => [
+      { lineId: ib.lineId, anchor: ib.anchors[0], cells: ib.cells },
+      { lineId: ib.lineId, anchor: ib.anchors[1], cells: ib.cells },
+    ]),
+  ];
+
   return {
     variant: state.variant,
     plane,
@@ -311,8 +392,8 @@ export function applyMove(state: GameState, move: Move): GameState {
     key,
     seen,
     lastMove: move,
-    lastCaptured: taken,
-    lastBrackets: brackets,
+    lastCaptured: [...taken, ...selfTaken],
+    lastBrackets: combinedBrackets,
   };
 }
 
@@ -323,6 +404,9 @@ function keyAfter(state: GameState, move: Move, scratch: Uint8Array): number {
   scratch[move.to] = state.turn;
   for (const b of findCaptures(scratch, state.plane, move.to, state.turn)) {
     for (const c of b.cells) scratch[c] = EMPTY;
+  }
+  for (const ib of findInterpositionCaptures(scratch, state.plane, move.to, state.turn)) {
+    for (const c of ib.cells) scratch[c] = EMPTY;
   }
   return positionKey(scratch, other(state.turn), state.plane);
 }

@@ -24,14 +24,51 @@ export interface SearchOptions {
   timeMs: number;
   /** Random spread (in eval points) added to root scores. 0 = best play. */
   noise: number;
+  /** Quiescence search depth (default 4). Set to 0 to disable tactical reading. */
+  qDepth?: number;
+  /** Chance of playing a casual blunder / random move (0 to 1). */
+  blunderRate?: number;
   /** Random source, for reproducible tests. */
   random?: () => number;
 }
 
 export const LEVELS: Record<Level, SearchOptions & { name: string; blurb: string }> = {
-  1: { name: "Novice", blurb: "Looks one move ahead and makes mistakes", maxDepth: 1, timeMs: 150, noise: 90 },
-  2: { name: "Adept", blurb: "Reads a few moves and rarely blunders", maxDepth: 4, timeMs: 700, noise: 6 },
-  3: { name: "Oracle", blurb: "Thinks as deep as time allows", maxDepth: 40, timeMs: 1600, noise: 0 },
+  1: {
+    name: "Easy",
+    blurb: "Casual play — makes mistakes, misses captures, and blunders",
+    maxDepth: 1,
+    qDepth: 0,
+    timeMs: 120,
+    noise: 450,
+    blunderRate: 0.28,
+  },
+  2: {
+    name: "Medium",
+    blurb: "Balanced play — solid basics with occasional oversights",
+    maxDepth: 3,
+    qDepth: 2,
+    timeMs: 400,
+    noise: 35,
+    blunderRate: 0.04,
+  },
+  3: {
+    name: "Hard",
+    blurb: "Master play — deep tactical reading and ruthless precision",
+    maxDepth: 16,
+    qDepth: 4,
+    timeMs: 1500,
+    noise: 0,
+    blunderRate: 0,
+  },
+};
+
+export const HINT_OPTIONS: SearchOptions & { name: string } = {
+  name: "Hint",
+  maxDepth: 10,
+  qDepth: 4,
+  timeMs: 800,
+  noise: 0,
+  blunderRate: 0,
 };
 
 export interface SearchResult {
@@ -80,12 +117,14 @@ class Searcher {
   readonly tt = new Map<number, TTEntry>();
   readonly killers = new Int32Array(256).fill(-1);
   readonly historyScore: Int32Array;
-  readonly capStack = new Int8Array(4096);
+  readonly capStack = new Int16Array(4096);
+  readonly qDepth: number;
   capTop = 0;
   nodes = 0;
   deadline = 0;
 
-  constructor(state: GameState) {
+  constructor(state: GameState, qDepth = Q_DEPTH) {
+    this.qDepth = qDepth;
     this.plane = state.plane;
     this.q = state.plane.q;
     this.n = state.plane.numPoints;
@@ -174,9 +213,35 @@ class Searcher {
     for (const ray of this.plane.captureRays[to]) {
       const cells = ray.cells;
       let i = 0;
-      while (i < cells.length && board[cells[i]] === enemy) i++;
+      while (i < cells.length && (cells[i] === from ? false : board[cells[i]] === enemy)) i++;
       if (i > 0 && i < cells.length && cells[i] !== from && board[cells[i]] === me) total += i;
     }
+
+    // Check if mover's stone gets captured (suicide / interposition penalty)
+    const tx = this.plane.x(to), ty = this.plane.y(to);
+    const q = this.q;
+    for (const l of this.plane.linesThrough[to]) {
+      const [dx, dy] = this.plane.vec[l];
+      let cx1 = tx + dx, cy1 = ty + dy;
+      while (cx1 >= 0 && cx1 < q && cy1 >= 0 && cy1 < q) {
+        const pt = this.plane.point(cx1, cy1);
+        if (pt === from || board[pt] !== me) break;
+        cx1 += dx; cy1 += dy;
+      }
+      if (cx1 < 0 || cx1 >= q || cy1 < 0 || cy1 >= q || board[this.plane.point(cx1, cy1)] !== enemy) continue;
+
+      let cx2 = tx - dx, cy2 = ty - dy;
+      while (cx2 >= 0 && cx2 < q && cy2 >= 0 && cy2 < q) {
+        const pt = this.plane.point(cx2, cy2);
+        if (pt === from || board[pt] !== me) break;
+        cx2 -= dx; cy2 -= dy;
+      }
+      if (cx2 < 0 || cx2 >= q || cy2 < 0 || cy2 >= q || board[this.plane.point(cx2, cy2)] !== enemy) continue;
+
+      total -= 10;
+      break;
+    }
+
     return total;
   }
 
@@ -186,6 +251,8 @@ class Searcher {
     const board = this.board;
     board[from] = EMPTY; this.toggle(from, me);
     board[to] = me; this.toggle(to, me);
+
+    // Active captures (enemy stones captured by me)
     let k = 0;
     for (const ray of this.plane.captureRays[to]) {
       const cells = ray.cells;
@@ -194,19 +261,59 @@ class Searcher {
       if (i > 0 && i < cells.length && board[cells[i]] === me) {
         for (let j = 0; j < i; j++) {
           const c = cells[j];
-          board[c] = EMPTY;
-          this.toggle(c, enemy);
-          this.capStack[this.capTop++] = c;
-          k++;
+          if (board[c] !== EMPTY) {
+            board[c] = EMPTY;
+            this.toggle(c, enemy);
+            this.capStack[this.capTop++] = c;
+            k++;
+          }
         }
       }
     }
+
+    // Interposition captures: mover stone placed between two enemy stones
+    let s = 0;
+    const tx = this.plane.x(to), ty = this.plane.y(to);
+    const q = this.q;
+    for (const l of this.plane.linesThrough[to]) {
+      const [dx, dy] = this.plane.vec[l];
+
+      let cx1 = tx + dx, cy1 = ty + dy;
+      while (cx1 >= 0 && cx1 < q && cy1 >= 0 && cy1 < q && board[this.plane.point(cx1, cy1)] === me) {
+        cx1 += dx;
+        cy1 += dy;
+      }
+      if (cx1 < 0 || cx1 >= q || cy1 < 0 || cy1 >= q || board[this.plane.point(cx1, cy1)] !== enemy) continue;
+
+      let cx2 = tx - dx, cy2 = ty - dy;
+      while (cx2 >= 0 && cx2 < q && cy2 >= 0 && cy2 < q && board[this.plane.point(cx2, cy2)] === me) {
+        cx2 -= dx;
+        cy2 -= dy;
+      }
+      if (cx2 < 0 || cx2 >= q || cy2 < 0 || cy2 >= q || board[this.plane.point(cx2, cy2)] !== enemy) continue;
+
+      let rx = cx2 + dx, ry = cy2 + dy;
+      while (rx !== cx1 || ry !== cy1) {
+        const pt = this.plane.point(rx, ry);
+        if (board[pt] === me) {
+          board[pt] = EMPTY;
+          this.toggle(pt, me);
+          this.capStack[this.capTop++] = pt;
+          s++;
+        }
+        rx += dx;
+        ry += dy;
+      }
+    }
+
     this.capStack[this.capTop++] = k;
+    this.capStack[this.capTop++] = s;
     this.caps[me] += k;
+    this.caps[enemy] += s;
     this.turn = enemy;
     this.lo ^= this.z.turnLo; this.hi ^= this.z.turnHi;
     this.ply++;
-    return k;
+    return k - s;
   }
 
   unmake(m: number) {
@@ -215,8 +322,19 @@ class Searcher {
     this.lo ^= this.z.turnLo; this.hi ^= this.z.turnHi;
     const me = other(this.turn), enemy = this.turn;
     this.turn = me;
+
+    const s = this.capStack[--this.capTop];
     const k = this.capStack[--this.capTop];
+    this.caps[enemy] -= s;
     this.caps[me] -= k;
+
+    // Restore mover stones captured by enemy
+    for (let j = 0; j < s; j++) {
+      const c = this.capStack[--this.capTop];
+      this.board[c] = me;
+      this.toggle(c, me);
+    }
+    // Restore enemy stones captured by me
     for (let j = 0; j < k; j++) {
       const c = this.capStack[--this.capTop];
       this.board[c] = enemy;
@@ -312,7 +430,7 @@ class Searcher {
     }
     if (depth <= 0) {
       if (moves.length === 0) return -(WIN - height);
-      return this.quiesce(alpha, beta, height, Q_DEPTH);
+      return this.qDepth > 0 ? this.quiesce(alpha, beta, height, this.qDepth) : this.evaluate();
     }
 
     const key = this.key();
@@ -415,7 +533,8 @@ const now = () => (typeof performance !== "undefined" ? performance.now() : Date
 /** Picks a move for the side to move. Returns move = null if there is none. */
 export function chooseMove(state: GameState, options: SearchOptions): SearchResult {
   const random = options.random ?? Math.random;
-  const s = new Searcher(state);
+  const qDepth = options.qDepth ?? Q_DEPTH;
+  const s = new Searcher(state, qDepth);
   let moves = s.rootMoves();
   if (moves.length === 0) return { move: null, score: -WIN, depth: 0, nodes: 0 };
 
@@ -424,6 +543,12 @@ export function chooseMove(state: GameState, options: SearchOptions): SearchResu
     [moves[i], moves[j]] = [moves[j], moves[i]];
   }
   if (moves.length === 1) return { move: unpack(moves[0]), score: 0, depth: 0, nodes: 0 };
+
+  // Blunder simulation for casual difficulty
+  if (options.blunderRate && options.blunderRate > 0 && random() < options.blunderRate) {
+    const blunderIdx = Math.floor(random() * moves.length);
+    return { move: unpack(moves[blunderIdx]), score: 0, depth: 1, nodes: 1 };
+  }
 
   s.deadline = now() + options.timeMs;
   let bestMove = moves[0];

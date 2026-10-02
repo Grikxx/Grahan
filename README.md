@@ -71,6 +71,4 @@ The board is an **Affine Plane AG(2, q)** over the Galois Field GF(q). Key prope
 - Perfect symmetry: every point is equivalent (vertex-transitive)
 - Lines come in q+1 "parallel classes" — lines of the same slope never intersect
 
-## License
 
-MIT

@@ -26,6 +26,7 @@ interface WinningAnimationProps {
   captures: number;
   target: number;
   ply: number;
+  maxTurns?: number;
   onRematch: () => void;
   onChangeSetup: () => void;
 }
@@ -38,6 +39,7 @@ export default function WinningAnimation({
   captures,
   target,
   ply,
+  maxTurns,
   onRematch,
   onChangeSetup,
 }: WinningAnimationProps) {
@@ -237,7 +239,7 @@ export default function WinningAnimation({
             </div>
             <div className="stat-pill">
               <span className="stat-label">Turns</span>
-              <span className="stat-val">{ply}</span>
+              <span className="stat-val">{maxTurns ? `${Math.floor(ply / 2)} / ${maxTurns}` : Math.floor(ply / 2)}</span>
             </div>
           </div>
 

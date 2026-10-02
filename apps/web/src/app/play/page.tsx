@@ -9,6 +9,7 @@ import {
 import Board from "@/components/Board";
 import SiteNav from "@/components/SiteNav";
 import StoneIcon from "@/components/StoneIcon";
+import TurnCounter from "@/components/TurnCounter";
 import WinningAnimation from "@/components/WinningAnimation";
 import { DEFAULT_SETUP, useGrahan, type Setup } from "@/hooks/useGrahan";
 import { getSoundEnabled, getSoundServerSnapshot, setSoundEnabled, subscribeSound } from "@/lib/sound";
@@ -91,11 +92,11 @@ function SetupScreen({ draft, onChange, onStart }: { draft: Setup; onChange: (s:
           value={draft.variant}
           onChange={(variant) => set({ variant })}
           options={[
-            { value: "grahan-6", title: "6 × 6", sub: "12 stones each, take 5 to win" },
-            { value: "grahan-7", title: "7 × 7", sub: "14 stones each, take 6 to win" },
-            { value: "grahan-8", title: "8 × 8", sub: "16 stones each, take 7 to win" },
-            { value: "grahan-9", title: "9 × 9", sub: "18 stones each, take 8 to win" },
-            { value: "grahan-10", title: "10 × 10", sub: "20 stones each, take 9 to win" },
+            { value: "grahan-6", title: "6 × 6", sub: "12 stones each, take 5 to win · 100 turns limit" },
+            { value: "grahan-7", title: "7 × 7", sub: "14 stones each, take 6 to win · 125 turns limit" },
+            { value: "grahan-8", title: "8 × 8", sub: "16 stones each, take 7 to win · 150 turns limit" },
+            { value: "grahan-9", title: "9 × 9", sub: "18 stones each, take 8 to win · 175 turns limit" },
+            { value: "grahan-10", title: "10 × 10", sub: "20 stones each, take 9 to win · 200 turns limit" },
           ]}
         />
 
@@ -271,8 +272,8 @@ function ResultCard({ game, onRematch, onChangeSetup }: { game: Game; onRematch:
       : result.reason === "trapped"
         ? `${loserName} had no legal move left.`
         : winner
-          ? `The ${state.variant.maxPly}-turn limit was reached and ${winnerName} had more stones.`
-          : `The ${state.variant.maxPly}-turn limit was reached with equal stones.`;
+          ? `The ${state.variant.maxTurns}-turn limit was reached and ${winnerName} had more stones.`
+          : `The ${state.variant.maxTurns}-turn limit was reached with equal stones.`;
 
   return (
     <div className="result" role="dialog" aria-labelledby="result-title">
@@ -338,6 +339,7 @@ function GameTable({ game, onRematch, onChangeSetup }: { game: Game; onRematch: 
             }
             target={game.state.variant.captureTarget}
             ply={game.state.ply}
+            maxTurns={variant.maxTurns}
             onRematch={onRematch}
             onChangeSetup={onChangeSetup}
           />
@@ -345,6 +347,14 @@ function GameTable({ game, onRematch, onChangeSetup }: { game: Game; onRematch: 
       </section>
 
       <aside className="almanac" aria-label="Game panel">
+        <TurnCounter
+          ply={game.state.ply}
+          maxTurns={variant.maxTurns}
+          maxPly={variant.maxPly}
+          turn={game.state.turn}
+          over={game.over}
+          variantName={variant.name}
+        />
         <PlayerPlate game={game} side={RAHU} />
         <PlayerPlate game={game} side={SURYA} />
 

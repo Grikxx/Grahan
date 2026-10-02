@@ -24,7 +24,10 @@
      - **Medium**: Depth 3, shallow quiescence reading (`qDepth: 2`), 4% blunder rate, modest evaluation noise.
      - **Hard**: Depth 16, full deep quiescence reading (`qDepth: 4`), 0 blunder rate, 0 noise for master-level tactical play.
    - **High-Accuracy Hints**: Dedicated `HINT_OPTIONS` with depth 10, full quiescence search, and zero noise. Enhanced board visuals with glowing origin beacon rings, directional trails, destination target markers, and clear hint status guidance. Hints automatically clear upon selecting another piece.
+    - **Turn Counter & Turn Limits**:
+      - Explicit turn limits for all board sizes: 6×6 (100 turns), 7×7 (125 turns), 8×8 (150 turns), 9×9 (175 turns), 10×10 (200 turns).
+      - Celestial Turn Counter ([`TurnCounter.tsx`](file:///home/grikxx/Documents/DM2.0/Grahan/apps/web/src/components/TurnCounter.tsx)) showing turn number, progress bar, remaining turns, and phase progression.
 4. **Tests and Builds**:
-   - 23 engine tests passing cleanly (`npm test`).
+   - 25 engine tests passing cleanly (`npm test`).
    - Rebuilt Web Worker (`public/ai-worker.js`).
    - Production Next.js build (`npm run build`) generates all static pages with zero errors.

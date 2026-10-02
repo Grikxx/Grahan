@@ -39,15 +39,28 @@ export interface Variant {
   readonly stones: number;
   readonly captureTarget: number;
   readonly maxPly: number;
+  readonly maxTurns: number;
 }
 
 export const VARIANTS: Record<VariantId, Variant> = {
-  "grahan-6": { id: "grahan-6", name: "6 × 6", q: 6, stones: 12, captureTarget: 5, maxPly: 200 },
-  "grahan-7": { id: "grahan-7", name: "7 × 7", q: 7, stones: 14, captureTarget: 6, maxPly: 250 },
-  "grahan-8": { id: "grahan-8", name: "8 × 8", q: 8, stones: 16, captureTarget: 7, maxPly: 300 },
-  "grahan-9": { id: "grahan-9", name: "9 × 9", q: 9, stones: 18, captureTarget: 8, maxPly: 350 },
-  "grahan-10": { id: "grahan-10", name: "10 × 10", q: 10, stones: 20, captureTarget: 9, maxPly: 400 },
+  "grahan-6": { id: "grahan-6", name: "6 × 6", q: 6, stones: 12, captureTarget: 5, maxPly: 200, maxTurns: 100 },
+  "grahan-7": { id: "grahan-7", name: "7 × 7", q: 7, stones: 14, captureTarget: 6, maxPly: 250, maxTurns: 125 },
+  "grahan-8": { id: "grahan-8", name: "8 × 8", q: 8, stones: 16, captureTarget: 7, maxPly: 300, maxTurns: 150 },
+  "grahan-9": { id: "grahan-9", name: "9 × 9", q: 9, stones: 18, captureTarget: 8, maxPly: 350, maxTurns: 175 },
+  "grahan-10": { id: "grahan-10", name: "10 × 10", q: 10, stones: 20, captureTarget: 9, maxPly: 400, maxTurns: 200 },
 };
+
+/** 1-based current turn number (each turn comprises one Rahu move and one Surya move). */
+export function currentTurn(ply: number, maxTurns?: number): number {
+  const turn = Math.floor(ply / 2) + 1;
+  return maxTurns !== undefined ? Math.min(maxTurns, turn) : turn;
+}
+
+/** Number of full turns completed so far. */
+export function completedTurns(ply: number): number {
+  return Math.floor(ply / 2);
+}
+
 
 // ─── Moves and state ────────────────────────────────────────────────
 

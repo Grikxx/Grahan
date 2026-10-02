@@ -3,7 +3,8 @@ import {
   buildPlane,
   newGame, positionFromRows, legalMoves, pseudoMoves, applyMove, outcome, findCaptures,
   movePath, moveWraps, toSnapshot, fromSnapshot, threatenedStones,
-  chooseMove, chooseMoveAtLevel, LEVELS, HINT_OPTIONS, RAHU, SURYA, EMPTY, type GameState, type Move,
+  chooseMove, chooseMoveAtLevel, LEVELS, HINT_OPTIONS, RAHU, SURYA, EMPTY, VARIANTS, currentTurn, completedTurns,
+  type GameState, type Move,
 } from "../index";
 
 const seeded = (seed: number) => () => {
@@ -198,6 +199,48 @@ describe("Outcome", () => {
     expect(outcome(s).winner).toBeNull();
     const won = { ...s, captured: [5, 0] as const };
     expect(outcome(won).winner).toBe("rahu");
+  });
+
+  it("variant turn limits match expected ratios (maxTurns = maxPly / 2)", () => {
+    expect(VARIANTS["grahan-6"].maxTurns).toBe(100);
+    expect(VARIANTS["grahan-6"].maxPly).toBe(200);
+
+    expect(VARIANTS["grahan-7"].maxTurns).toBe(125);
+    expect(VARIANTS["grahan-7"].maxPly).toBe(250);
+
+    expect(VARIANTS["grahan-8"].maxTurns).toBe(150);
+    expect(VARIANTS["grahan-8"].maxPly).toBe(300);
+
+    expect(VARIANTS["grahan-9"].maxTurns).toBe(175);
+    expect(VARIANTS["grahan-9"].maxPly).toBe(350);
+
+    expect(VARIANTS["grahan-10"].maxTurns).toBe(200);
+    expect(VARIANTS["grahan-10"].maxPly).toBe(400);
+  });
+
+  it("turn counter increases after each completed turn (both players move)", () => {
+    // Turn 1 start (0 moves made)
+    expect(currentTurn(0)).toBe(1);
+    expect(completedTurns(0)).toBe(0);
+
+    // Rahu moves (ply 1) -> still Turn 1, Surya's move
+    expect(currentTurn(1)).toBe(1);
+    expect(completedTurns(1)).toBe(0);
+
+    // Surya moves (ply 2) -> Turn 1 completed! Counter increases to Turn 2
+    expect(currentTurn(2)).toBe(2);
+    expect(completedTurns(2)).toBe(1);
+
+    // Turn 2: Rahu moves (ply 3)
+    expect(currentTurn(3)).toBe(2);
+    expect(completedTurns(3)).toBe(1);
+
+    // Surya moves (ply 4) -> Turn 2 completed! Counter increases to Turn 3
+    expect(currentTurn(4)).toBe(3);
+    expect(completedTurns(4)).toBe(2);
+
+    // Capping at maxTurns
+    expect(currentTurn(200, 100)).toBe(100);
   });
 });
 

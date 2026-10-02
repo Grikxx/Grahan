@@ -97,6 +97,9 @@ export default function RulesPage() {
               <ul>
                 <li>You reach the capture target for your board size (5 captures on 6 × 6, up to 9 on 10 × 10).</li>
                 <li>Your opponent has no legal moves remaining on their turn (trapped).</li>
+                <li>
+                  The maximum turn limit is reached (<strong>100 turns</strong> on 6 × 6, <strong>125</strong> on 7 × 7, <strong>150</strong> on 8 × 8, <strong>175</strong> on 9 × 9, and <strong>200 turns</strong> on 10 × 10). The player with more stones remaining on the board wins (or a draw if stone counts are tied).
+                </li>
               </ul>
               <p className="mt-4">
                 <Link href="/play" className="btn btn-brass">Ready to play? Start a game</Link>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import {
-  LEVELS, RAHU, SURYA,
+  HINT_OPTIONS, LEVELS, RAHU, SURYA,
   applyMove, isLegal, legalMovesFrom, newGame, outcome, threatenedStones,
   type GameState, type Level, type Move, type Player, type VariantId,
 } from "@grahan/engine";
@@ -48,7 +48,7 @@ function reducer(s: State, a: Action): State {
     case "start":
       return init(a.setup);
     case "select":
-      return { ...s, selected: a.cell };
+      return { ...s, selected: a.cell, hint: null };
     case "play":
       if (!isLegal(current, a.move)) return s;
       return { ...s, timeline: [...s.timeline, applyMove(current, a.move)], selected: null, hint: null };
@@ -155,7 +155,7 @@ export function useGrahan(initial: Setup = DEFAULT_SETUP) {
     if (!canAct || s.hinting) return;
     const token = epoch.current;
     dispatch({ type: "hinting", on: true });
-    requestMove(current, LEVELS[2], 300).then((move) => {
+    requestMove(current, HINT_OPTIONS, 300).then((move) => {
       if (token === epoch.current) dispatch({ type: "hint", move });
     });
   }, [canAct, current, s.hinting]);

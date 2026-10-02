@@ -69,9 +69,9 @@ const LESSONS: Lesson[] = [
     success: "Eclipsed. Only the enemy stones between your two stones are taken, and only by the stone that just moved.",
   },
   {
-    title: "Landing in a trap is safe",
+    title: "Beware the trap",
     text:
-      "Only the stone that moves can capture. Slide into the gap on c3, right between two suns. Nothing happens to you: they would have to move a stone away and back to take you.",
+      "If you slide your stone directly between two enemy stones on c3, you will be captured! Slide to the star on b3 instead to stay safe and threaten the suns.",
     variant: "grahan-6",
     rows: [
       "......",
@@ -81,9 +81,9 @@ const LESSONS: Lesson[] = [
       "......",
       "......",
     ],
-    marks: ["c3"],
-    check: (m) => (m.to === at("c3") ? true : "Slide the stone on a3 to the star on c3."),
-    success: "Safe. A sandwich only counts at the moment you close it yourself.",
+    marks: ["b3"],
+    check: (m) => (m.to === at("b3") ? true : "Slide the stone on a3 to b3 so you don't get trapped between the two suns."),
+    success: "Safe and sound! Landing on c3 between the two suns would have resulted in your stone being captured.",
   },
   {
     title: "Two at once",

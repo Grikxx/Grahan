@@ -136,15 +136,34 @@ export function drawScene(ctx: CanvasRenderingContext2D, v: View, sc: Scene) {
 
   // Hint
   if (sc.hint && !sc.anim) {
-    drawTrail(ctx, v, plane, sc.hint, "rgba(143,179,255,0.75)", 2.5);
+    const fx = px(v, plane.x(sc.hint.from)), fy = px(v, plane.y(sc.hint.from));
     const hx = px(v, plane.x(sc.hint.to)), hy = px(v, plane.y(sc.hint.to));
+    const pulse = 1 + 0.08 * Math.sin(sc.time * 0.006);
+
+    // Glowing origin stone ring
+    ctx.strokeStyle = "rgba(143,179,255,0.95)";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(fx, fy, r * 1.18 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Directional dashed trail
+    drawTrail(ctx, v, plane, sc.hint, "rgba(143,179,255,0.85)", 2.8);
+
+    // Destination dashed ring
     ctx.strokeStyle = LINE_COLORS[1];
     ctx.lineWidth = 2.5;
     ctx.setLineDash([5, 4]);
     ctx.beginPath();
-    ctx.arc(hx, hy, r * 1.05, 0, Math.PI * 2);
+    ctx.arc(hx, hy, r * 1.1 * pulse, 0, Math.PI * 2);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Destination center pip
+    ctx.fillStyle = "rgba(143,179,255,0.55)";
+    ctx.beginPath();
+    ctx.arc(hx, hy, r * 0.35, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   // Hover preview: trail, ghost piece, capture brackets
@@ -228,11 +247,12 @@ export function drawScene(ctx: CanvasRenderingContext2D, v: View, sc: Scene) {
 
     for (const cell of anim.captured) {
       const cx = px(v, plane.x(cell)), cy = px(v, plane.y(cell));
+      const cellVictim: Player = cell === move.to ? mover : victim;
       if (e < 0) {
-        drawStone(ctx, cx, cy, r, victim, 1, sc.time, sc.reducedMotion);
+        drawStone(ctx, cx, cy, r, cellVictim, 1, sc.time, sc.reducedMotion);
       } else if (e < 1) {
         const ang = Math.atan2(plane.y(cell) - ty, plane.x(cell) - tx);
-        drawEclipse(ctx, cx, cy, r, victim, e, ang, sc.time, sc.reducedMotion);
+        drawEclipse(ctx, cx, cy, r, cellVictim, e, ang, sc.time, sc.reducedMotion);
       }
     }
     if (e >= 0 && e < 0.65) {

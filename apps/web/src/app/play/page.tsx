@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
-  LEVELS, RAHU, SURYA, VARIANTS, moveName, playerName,
+  LEVELS, RAHU, SURYA, VARIANTS, moveName, playerName, pointName,
   type GameState, type Level, type Player, type VariantId,
 } from "@grahan/engine";
 import Board from "@/components/Board";
 import SiteNav from "@/components/SiteNav";
 import StoneIcon from "@/components/StoneIcon";
+import WinningAnimation from "@/components/WinningAnimation";
 import { DEFAULT_SETUP, useGrahan, type Setup } from "@/hooks/useGrahan";
 import { getSoundEnabled, getSoundServerSnapshot, setSoundEnabled, subscribeSound } from "@/lib/sound";
 
@@ -220,6 +221,15 @@ function statusText(game: Game, showDanger: boolean): React.ReactNode {
   const { state, setup } = game;
   const name = playerName(state.turn);
   if (game.over) return "Game over.";
+  if (game.hint) {
+    const fromName = pointName(state.plane, game.hint.from);
+    const toName = pointName(state.plane, game.hint.to);
+    return (
+      <span className="text-moon font-medium">
+        💡 Hint: Slide {fromName} to {toName}.
+      </span>
+    );
+  }
   if (game.thinking) return `${name} is thinking…`;
   const vsComputer = setup.opponent === "computer";
   const threatened = showDanger ? game.danger.size : 0;
@@ -305,7 +315,33 @@ function GameTable({ game, onRematch, onChangeSetup }: { game: Game; onRematch: 
           onEscape={game.deselect}
           onAnimating={game.setAnimating}
         />
-        {game.over && <ResultCard game={game} onRematch={onRematch} onChangeSetup={onChangeSetup} />}
+        {game.over && (
+          <WinningAnimation
+            winner={game.result.winner === "rahu" ? RAHU : game.result.winner === "surya" ? SURYA : null}
+            opponent={game.setup.opponent}
+            human={game.setup.human}
+            reason={
+              game.result.reason === "target"
+                ? `${game.result.winner === "rahu" ? "Rahu" : "Surya"} reached ${game.state.variant.captureTarget} captures.`
+                : game.result.reason === "trapped"
+                  ? `${game.result.winner === "rahu" ? "Surya" : "Rahu"} was completely trapped with no legal moves.`
+                  : game.result.winner
+                    ? `The turn limit was reached and ${game.result.winner === "rahu" ? "Rahu" : "Surya"} held more territory.`
+                    : "The turn limit was reached with an equal number of stones."
+            }
+            captures={
+              game.result.winner === "rahu"
+                ? game.state.captured[0]
+                : game.result.winner === "surya"
+                  ? game.state.captured[1]
+                  : 0
+            }
+            target={game.state.variant.captureTarget}
+            ply={game.state.ply}
+            onRematch={onRematch}
+            onChangeSetup={onChangeSetup}
+          />
+        )}
       </section>
 
       <aside className="almanac" aria-label="Game panel">

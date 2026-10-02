@@ -471,6 +471,292 @@ a {
   }
 }
 
+/* ─── Celestial Victory Celebration ────────────────────────────── */
+
+.victory-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: radial-gradient(circle at center, rgb(15 11 36 / 0.72) 0%, rgb(6 4 16 / 0.88) 100%);
+  backdrop-filter: blur(8px);
+  border-radius: 22px;
+  overflow: hidden;
+  z-index: 30;
+  animation: victory-fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.victory-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.victory-card-wrap {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Expanding Shockwaves */
+.victory-shockwave {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 140px;
+  height: 140px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.victory-shockwave .ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border-style: solid;
+  opacity: 0;
+  animation: shockwave-expand 3.2s cubic-bezier(0.2, 0.8, 0.2, 1) infinite;
+}
+
+.shockwave-sun .ring {
+  border-color: rgba(246, 185, 59, 0.45);
+  box-shadow: 0 0 20px rgba(246, 185, 59, 0.25);
+}
+
+.shockwave-moon .ring {
+  border-color: rgba(185, 200, 245, 0.4);
+  box-shadow: 0 0 20px rgba(185, 200, 245, 0.2);
+}
+
+.victory-shockwave .ring-1 {
+  border-width: 1.5px;
+  animation-delay: 0.1s;
+}
+
+.victory-shockwave .ring-2 {
+  border-width: 1px;
+  animation-delay: 1.1s;
+}
+
+.victory-shockwave .ring-3 {
+  border-width: 1.5px;
+  animation-delay: 2.1s;
+}
+
+@keyframes shockwave-expand {
+  0% {
+    transform: scale(0.6);
+    opacity: 0.8;
+  }
+  70% {
+    opacity: 0.35;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
+}
+
+/* Victory Card */
+.victory-card {
+  position: relative;
+  max-width: 26rem;
+  width: 90vw;
+  text-align: center;
+  padding: 2.25rem 2rem;
+  background: linear-gradient(165deg, rgb(28 22 60 / 0.96) 0%, rgb(16 12 36 / 0.98) 100%);
+  border: 1px solid rgba(216, 180, 106, 0.65);
+  border-radius: 20px;
+  box-shadow:
+    0 25px 60px -12px rgba(0, 0, 0, 0.9),
+    0 0 40px -10px rgba(216, 180, 106, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  animation: victory-card-pop 0.65s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.victory-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0.85rem;
+  background: rgba(216, 180, 106, 0.12);
+  border: 1px solid rgba(216, 180, 106, 0.35);
+  border-radius: 9999px;
+  margin-bottom: 0.75rem;
+}
+
+.badge-glow {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-brass);
+  box-shadow: 0 0 8px var(--color-brass);
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+.badge-text {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--color-brass);
+}
+
+.victory-emblem-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.emblem-halo {
+  position: absolute;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  filter: blur(12px);
+  opacity: 0.7;
+  animation: halo-pulse 2.8s ease-in-out infinite alternate;
+}
+
+.halo-sun {
+  background: radial-gradient(circle, rgba(246, 185, 59, 0.8) 0%, rgba(216, 122, 34, 0.2) 70%, transparent 100%);
+}
+
+.halo-moon {
+  background: radial-gradient(circle, rgba(185, 200, 245, 0.8) 0%, rgba(108, 92, 231, 0.25) 70%, transparent 100%);
+}
+
+.emblem-stone {
+  position: relative;
+  z-index: 2;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.5));
+  animation: emblem-float 3s ease-in-out infinite alternate;
+}
+
+.victory-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 2.5rem);
+  font-weight: 600;
+  line-height: 1.1;
+  color: var(--color-parchment);
+  letter-spacing: 0.02em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.6);
+}
+
+.victory-subtitle {
+  font-size: 0.95rem;
+  color: var(--color-brass);
+  margin-top: 0.35rem;
+  font-style: italic;
+}
+
+.victory-reason {
+  font-size: 0.9rem;
+  color: var(--color-haze);
+  margin-top: 0.75rem;
+  line-height: 1.5;
+}
+
+.victory-stats {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+  padding: 0.65rem 1rem;
+  background: rgba(14, 11, 34, 0.6);
+  border: 1px solid rgba(216, 180, 106, 0.2);
+  border-radius: 12px;
+}
+
+.stat-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.stat-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-haze);
+}
+
+.stat-val {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--color-parchment);
+}
+
+.victory-btn-primary {
+  box-shadow: 0 0 20px rgba(216, 180, 106, 0.35);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.victory-btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 28px rgba(216, 180, 106, 0.55);
+}
+
+@keyframes victory-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes victory-card-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.88) translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes halo-pulse {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1.25);
+    opacity: 0.85;
+  }
+}
+
+@keyframes emblem-float {
+  0% {
+    transform: translateY(0);
+  }
+  100% {
+    transform: translateY(-5px);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
 /* ─── Landing ──────────────────────────────────────────────────── */
 
 .hero {

@@ -67,8 +67,8 @@ export default function RulesPage() {
                 on the opposite side, all those enemy stones are eclipsed and removed from the board.
               </p>
               <p>
-                Only the stone that just moved can trigger captures. If you slide into a gap between two enemy stones,
-                you are safe: landing in a trap does not count as being captured.
+                Beware the interposition trap: if you slide your stone into a gap directly between two enemy stones,
+                your stone is immediately captured by the opponent!
               </p>
               <p>
                 A single move can complete sandwiches in multiple directions simultaneously, capturing enemies along both

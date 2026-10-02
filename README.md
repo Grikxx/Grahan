@@ -1,8 +1,8 @@
-# 🌑 GRAHAN-P (ग्रहण-प) — Grahan with Pass
+# 🌑 GRAHAN (ग्रहण)
 
-> **A celestial strategy game on $n \times n$ grids for Discrete Mathematics.**
+> **A celestial strategy game of shadows and suns on $n \times n$ grids for Discrete Mathematics.**
 
-GRAHAN-P ("Grahan with Pass") is a two-player zero-sum abstract strategy game. Capture enemy stones through custodial ("eclipse sandwich") captures along straight lines and diagonals, or maneuver positionally under positional superko and legal passing.
+GRAHAN is a two-player zero-sum abstract strategy game. Capture enemy stones through custodial ("eclipse sandwich") captures along straight lines and diagonals, or maneuver positionally under positional superko and legal passing.
 
 ## Quick Start
 
@@ -32,17 +32,35 @@ npm run dev --prefix apps/web
 ## Core Rules
 
 1. **Rahu & Surya**: Rahu (dark shadow) moves first; Surya (radiant sun) moves second.
-2. **Move**: Pick a stone and slide it any positive distance along an open row, column, or diagonal.
-3. **Pass (N1)**: At any non-terminal position, the player to move may pass. A pass changes only the side to move and advances the ply counter by 1.
-4. **Eclipse Sandwich**: An unbroken run of enemy stones between the mover's landing stone and another friendly stone is captured. Multiple rays capture simultaneously. No self-capture (landing between two enemy stones does not capture the mover).
-5. **Superko (N2)**: A move may not recreate a position $(board, \text{turn})$ that has already occurred in the game. Passes are exempt from Superko. Position history $H$ is a multiset.
-6. **Winning (N3 & K1–K5)**:
+2. **Move**: Pick a stone and slide it any positive distance along an open row, column, or diagonal. No jumping, no landing on an occupied square.
+3. **Pass**: At any non-terminal position, the player to move may pass. A pass changes only the side to move and advances the ply counter by 1.
+4. **Eclipse Sandwich**: An unbroken run of enemy stones between the mover's landing stone and another friendly stone is captured. Multiple rays capture simultaneously. No self-capture (landing between two enemy stones is safe).
+5. **Superko**: A move may not recreate an earlier position $(board, \text{turn})$ that has already occurred in the game. Passes are exempt from Superko. Position history $H$ is a multiset.
+6. **Winning Conditions**:
    - **T1**: Reaching $n-1$ captures wins immediately.
    - **T2**: At ply limit $L(n)$, player with more stones wins (equal = draw).
    - **No stalemate loss**: Passing is always legal in non-terminal positions.
 
-## Testing
+## Tech Stack
+
+- **Frontend:** Next.js 16 (App Router), Tailwind CSS v4, HTML5 Canvas
+- **Game Engine:** TypeScript (pure functional, immutable state)
+- **AI:** Iterative Deepening Negamax with Alpha-Beta pruning, transposition table, Web Worker background execution
+- **Rendering:** Custom Canvas renderer with glow effects, line highlights, move animations
+
+## Pages
+
+- `/` — Landing page with interactive live demonstration
+- `/tutorial` — Step-by-step interactive tutorial
+- `/play` — Full game with AI opponent or local PvP
+- `/about` — Complete rules reference
+
+## Development & Testing
 
 ```bash
+# Run tests
 npm test
+
+# Build for production
+npm run build
 ```

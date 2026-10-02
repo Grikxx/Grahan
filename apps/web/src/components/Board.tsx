@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { RAHU, pointName, type GameState, type Move } from "@grahan/engine";
+import { RAHU, pointName, isPass, type GameState, type Move } from "@grahan/engine";
 import { drawScene, hitTest, makeView, slideDuration, ECLIPSE_MS, type SlideAnim, type View } from "@/lib/render";
 import { playEclipse, playSlide } from "@/lib/sound";
 
@@ -58,12 +58,12 @@ export default function Board({
   useEffect(() => {
     const prev = prevRef.current;
     prevRef.current = state;
-    if (!prev || !state.lastMove || state.ply !== prev.ply + 1 || prev.plane.q !== state.plane.q) {
+    if (!prev || !state.lastMove || isPass(state.lastMove) || state.ply !== prev.ply + 1 || prev.plane.q !== state.plane.q) {
       animRef.current = null;
       return;
     }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const move = state.lastMove;
+    const move = state.lastMove as Move;
     const mover = prev.turn;
     const slideMs = slideDuration(move.steps, reduced);
     animRef.current = {
@@ -200,11 +200,13 @@ export default function Board({
 
   const whoseTurn = state.turn === RAHU ? "Rahu" : "Surya";
   const last = state.lastMove;
-  const announce = last
-    ? `${state.turn === RAHU ? "Surya" : "Rahu"} played ${pointName(state.plane, last.from)} to ${pointName(state.plane, last.to)}${
+  const announce = !last
+    ? ""
+    : isPass(last)
+    ? `${state.turn === RAHU ? "Surya" : "Rahu"} passed.`
+    : `${state.turn === RAHU ? "Surya" : "Rahu"} played ${pointName(state.plane, last.from)} to ${pointName(state.plane, last.to)}${
         state.lastCaptured.length ? ` and captured ${state.lastCaptured.length}` : ""
-      }.`
-    : "";
+      }.`;
 
   return (
     <div ref={wrapRef} className="board-frame">

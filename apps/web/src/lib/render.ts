@@ -7,7 +7,7 @@
  */
 
 import {
-  EMPTY, RAHU, SURYA, findCaptures, movePath,
+  EMPTY, RAHU, SURYA, findCaptures, isPass, movePath,
   type Bracket, type GameState, type Move, type Plane, type Player,
 } from "@grahan/engine";
 
@@ -110,9 +110,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, v: View, sc: Scene) {
   if (sc.selected !== null) drawLinesThrough(ctx, v, plane, sc.selected);
 
   // Last move trail
-  if (sc.showLastMove && state.lastMove && !sc.anim) {
-    drawTrail(ctx, v, plane, state.lastMove, "rgba(216,180,106,0.35)", 2);
-    const fx = plane.x(state.lastMove.from), fy = plane.y(state.lastMove.from);
+  if (sc.showLastMove && state.lastMove && !isPass(state.lastMove) && !sc.anim) {
+    const move = state.lastMove as Move;
+    drawTrail(ctx, v, plane, move, "rgba(216,180,106,0.35)", 2);
+    const fx = plane.x(move.from), fy = plane.y(move.from);
     ctx.strokeStyle = COLORS.brassDim;
     ctx.lineWidth = 1.5;
     ctx.beginPath();

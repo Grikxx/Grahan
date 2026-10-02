@@ -113,7 +113,7 @@ describe("Custodial capture", () => {
     expect(after.board[P.point(2, 1)]).toBe(EMPTY);
   });
 
-  it("sliding between two enemy stones gets captured by default", () => {
+  it("sliding between two enemy stones is not captured (no self-capture)", () => {
     const s = positionFromRows("grahan-6", [
       "......",
       "S.S...",
@@ -127,9 +127,9 @@ describe("Custodial capture", () => {
     const m = legalMoves(s).find((mv) => mv.to === P.point(1, 1))!;
     expect(m).toBeDefined();
     const after = applyMove(s, m);
-    expect(after.board[P.point(1, 1)]).toBe(EMPTY);
-    expect(after.captured).toEqual([0, 1]);
-    expect(after.lastCaptured).toEqual([P.point(1, 1)]);
+    expect(after.board[P.point(1, 1)]).toBe(RAHU);
+    expect(after.captured).toEqual([0, 0]);
+    expect(after.lastCaptured).toEqual([]);
   });
 
   it("moving into a space with an empty gap next to enemy is not captured", () => {
@@ -301,10 +301,9 @@ describe("AI", () => {
     expect(r.move!.to).toBe(P.point(1, 1));
   });
 
-  it("simultaneous active capture and interposition capture resolves correctly", () => {
+  it("active capture with enemy stones nearby only captures the sandwiched enemies", () => {
     // Column 1: Rahu at (1, 3), Surya at (1, 2). Moving to (1, 1) active-captures (1, 2).
-    // Row 1: Surya at (0, 1) and (2, 1). Moving to (1, 1) sandwiches landing stone between two Surya stones.
-    // Rahu slides diagonally from (3, 3) to (1, 1).
+    // Row 1: Surya at (0, 1) and (2, 1). No self-capture occurs.
     const s = positionFromRows("grahan-6", [
       "......",
       "S.S...",
@@ -320,9 +319,9 @@ describe("AI", () => {
     const after = applyMove(s, m);
 
     // Active capture: Surya at (1, 2) is taken by Rahu -> captured[0] + 1
-    // Interposition capture: Rahu at (1, 1) is taken by Surya -> captured[1] + 1
-    expect(after.captured).toEqual([1, 1]);
+    // Landing stone at (1, 1) is not self-captured and remains Rahu
+    expect(after.captured).toEqual([1, 0]);
     expect(after.board[P.point(1, 2)]).toBe(EMPTY);
-    expect(after.board[P.point(1, 1)]).toBe(EMPTY);
+    expect(after.board[P.point(1, 1)]).toBe(RAHU);
   });
 });

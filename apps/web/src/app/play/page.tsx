@@ -92,6 +92,7 @@ function SetupScreen({ draft, onChange, onStart }: { draft: Setup; onChange: (s:
           value={draft.variant}
           onChange={(variant) => set({ variant })}
           options={[
+            { value: "grahan-4", title: "4 × 4", sub: "4 stones each, take 3 to win · 50 turns limit" },
             { value: "grahan-6", title: "6 × 6", sub: "12 stones each, take 5 to win · 100 turns limit" },
             { value: "grahan-7", title: "7 × 7", sub: "14 stones each, take 6 to win · 125 turns limit" },
             { value: "grahan-8", title: "8 × 8", sub: "16 stones each, take 7 to win · 150 turns limit" },
@@ -245,12 +246,12 @@ function statusText(game: Game, showDanger: boolean): React.ReactNode {
     return game.targets.length > 0 ? (
       <>Choose a ring to slide there, or pick another stone.{warn}</>
     ) : (
-      <>That stone cannot move right now. Pick another.{warn}</>
+      <>That stone has no open line right now. Pick another, or pass.{warn}</>
     );
   }
   return (
     <>
-      {vsComputer ? "Your move." : `${name} to move.`} Pick one of {vsComputer ? "your" : `${name}’s`} stones.{warn}
+      {vsComputer ? "Your turn." : `${name} to move.`} Slide a stone, or pass.{warn}
     </>
   );
 }
@@ -361,6 +362,14 @@ function GameTable({ game, onRematch, onChangeSetup }: { game: Game; onRematch: 
         <p className="status" aria-live="polite">{statusText(game, showDanger)}</p>
 
         <div className="toolbar" role="toolbar" aria-label="Game controls">
+          <button
+            className="btn btn-brass btn-sm"
+            onClick={game.pass}
+            disabled={!humanTurn}
+            title="Pass your turn (always legal in non-terminal positions)"
+          >
+            Pass
+          </button>
           <button className="btn btn-quiet btn-sm" onClick={game.undo} disabled={!game.canUndo}>Undo</button>
           <button className="btn btn-quiet btn-sm" onClick={game.askHint} disabled={!humanTurn || game.hinting}>
             {game.hinting ? "Looking…" : "Hint"}

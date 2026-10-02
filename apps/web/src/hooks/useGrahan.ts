@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import {
   HINT_OPTIONS, LEVELS, RAHU, SURYA,
-  applyMove, isLegal, legalMovesFrom, newGame, outcome, threatenedStones,
+  applyMove, applyPass, isLegal, legalMovesFrom, newGame, outcome, threatenedStones,
   type GameState, type Level, type Move, type Player, type VariantId,
 } from "@grahan/engine";
 import { requestMove } from "@/lib/ai-client";
@@ -34,6 +34,7 @@ type Action =
   | { type: "start"; setup: Setup }
   | { type: "select"; cell: number | null }
   | { type: "play"; move: Move }
+  | { type: "pass" }
   | { type: "undo"; plies: number }
   | { type: "hinting"; on: boolean }
   | { type: "hint"; move: Move | null };
@@ -52,6 +53,9 @@ function reducer(s: State, a: Action): State {
     case "play":
       if (!isLegal(current, a.move)) return s;
       return { ...s, timeline: [...s.timeline, applyMove(current, a.move)], selected: null, hint: null };
+    case "pass":
+      if (outcome(current).winner !== null) return s;
+      return { ...s, timeline: [...s.timeline, applyPass(current)], selected: null, hint: null };
     case "undo": {
       const keep = Math.max(1, s.timeline.length - a.plies);
       return { ...s, timeline: s.timeline.slice(0, keep), selected: null, hint: null, hinting: false };
@@ -100,6 +104,7 @@ export function useGrahan(initial: Setup = DEFAULT_SETUP) {
       for (let i = 0; i < 20 && animating.current; i++) await new Promise((r) => setTimeout(r, 50));
       if (cancelled || token !== epoch.current) return;
       if (move) dispatch({ type: "play", move });
+      else dispatch({ type: "pass" });
     });
     return () => {
       cancelled = true;
@@ -160,6 +165,11 @@ export function useGrahan(initial: Setup = DEFAULT_SETUP) {
     });
   }, [canAct, current, s.hinting]);
 
+  const pass = useCallback(() => {
+    if (!canAct) return;
+    dispatch({ type: "pass" });
+  }, [canAct]);
+
   const start = useCallback((next: Setup) => dispatch({ type: "start", setup: next }), []);
 
   return {
@@ -180,6 +190,7 @@ export function useGrahan(initial: Setup = DEFAULT_SETUP) {
     clickCell,
     deselect,
     undo,
+    pass,
     askHint,
     start,
     setAnimating,

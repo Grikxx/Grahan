@@ -1,18 +1,19 @@
 /**
- * GRAHAN computer player.
+ * GRAHAN-P computer player.
  *
  * Iterative-deepening negamax with alpha-beta pruning, a transposition table,
  * capture-first move ordering (exact capture counts, killers, history),
  * a short capture-only quiescence search, and a wall-clock budget.
  *
  * Superko is respected inside the search.
- * Supports board sizes 6×6 through 10×10.
+ * Supports board sizes 4×4 through 10×10.
+ * In GRAHAN-P, if no legal moves exist, the bot passes.
  */
 
 import type { Plane } from "./geometry";
 import {
-  EMPTY, RAHU, SURYA, other, zobristFor, combineKey,
-  type GameState, type Move, type Player, type Zobrist,
+  EMPTY, RAHU, SURYA, other, zobristFor, combineKey, PASS,
+  type Action, type GameState, type Move, type Player, type Zobrist,
 } from "./rules";
 
 export type Level = 1 | 2 | 3;
@@ -73,6 +74,7 @@ export const HINT_OPTIONS: SearchOptions & { name: string } = {
 
 export interface SearchResult {
   move: Move | null;
+  action: Action;
   score: number;
   depth: number;
   nodes: number;
@@ -136,7 +138,7 @@ class Searcher {
     this.ply = state.ply;
     this.caps[RAHU] = state.captured[0];
     this.caps[SURYA] = state.captured[1];
-    this.seen = state.seen;
+    this.seen = new Set(state.seen.keys());
     this.historyScore = new Int32Array(this.n * this.n);
     for (let p = 0; p < this.n; p++) {
       const c = this.board[p];
@@ -216,32 +218,6 @@ class Searcher {
       while (i < cells.length && (cells[i] === from ? false : board[cells[i]] === enemy)) i++;
       if (i > 0 && i < cells.length && cells[i] !== from && board[cells[i]] === me) total += i;
     }
-
-    // Check if mover's stone gets captured (suicide / interposition penalty)
-    const tx = this.plane.x(to), ty = this.plane.y(to);
-    const q = this.q;
-    for (const l of this.plane.linesThrough[to]) {
-      const [dx, dy] = this.plane.vec[l];
-      let cx1 = tx + dx, cy1 = ty + dy;
-      while (cx1 >= 0 && cx1 < q && cy1 >= 0 && cy1 < q) {
-        const pt = this.plane.point(cx1, cy1);
-        if (pt === from || board[pt] !== me) break;
-        cx1 += dx; cy1 += dy;
-      }
-      if (cx1 < 0 || cx1 >= q || cy1 < 0 || cy1 >= q || board[this.plane.point(cx1, cy1)] !== enemy) continue;
-
-      let cx2 = tx - dx, cy2 = ty - dy;
-      while (cx2 >= 0 && cx2 < q && cy2 >= 0 && cy2 < q) {
-        const pt = this.plane.point(cx2, cy2);
-        if (pt === from || board[pt] !== me) break;
-        cx2 -= dx; cy2 -= dy;
-      }
-      if (cx2 < 0 || cx2 >= q || cy2 < 0 || cy2 >= q || board[this.plane.point(cx2, cy2)] !== enemy) continue;
-
-      total -= 10;
-      break;
-    }
-
     return total;
   }
 
@@ -271,70 +247,26 @@ class Searcher {
       }
     }
 
-    // Interposition captures: mover stone placed between two enemy stones
-    let s = 0;
-    const tx = this.plane.x(to), ty = this.plane.y(to);
-    const q = this.q;
-    for (const l of this.plane.linesThrough[to]) {
-      const [dx, dy] = this.plane.vec[l];
-
-      let cx1 = tx + dx, cy1 = ty + dy;
-      while (cx1 >= 0 && cx1 < q && cy1 >= 0 && cy1 < q && board[this.plane.point(cx1, cy1)] === me) {
-        cx1 += dx;
-        cy1 += dy;
-      }
-      if (cx1 < 0 || cx1 >= q || cy1 < 0 || cy1 >= q || board[this.plane.point(cx1, cy1)] !== enemy) continue;
-
-      let cx2 = tx - dx, cy2 = ty - dy;
-      while (cx2 >= 0 && cx2 < q && cy2 >= 0 && cy2 < q && board[this.plane.point(cx2, cy2)] === me) {
-        cx2 -= dx;
-        cy2 -= dy;
-      }
-      if (cx2 < 0 || cx2 >= q || cy2 < 0 || cy2 >= q || board[this.plane.point(cx2, cy2)] !== enemy) continue;
-
-      let rx = cx2 + dx, ry = cy2 + dy;
-      while (rx !== cx1 || ry !== cy1) {
-        const pt = this.plane.point(rx, ry);
-        if (board[pt] === me) {
-          board[pt] = EMPTY;
-          this.toggle(pt, me);
-          this.capStack[this.capTop++] = pt;
-          s++;
-        }
-        rx += dx;
-        ry += dy;
-      }
-    }
-
     this.capStack[this.capTop++] = k;
-    this.capStack[this.capTop++] = s;
     this.caps[me] += k;
-    this.caps[enemy] += s;
     this.turn = enemy;
     this.lo ^= this.z.turnLo; this.hi ^= this.z.turnHi;
     this.ply++;
-    return k - s;
+    return k;
   }
 
   unmake(m: number) {
     const from = mFrom(m), to = mTo(m);
     this.ply--;
     this.lo ^= this.z.turnLo; this.hi ^= this.z.turnHi;
-    const me = other(this.turn), enemy = this.turn;
+    const me = other(this.turn);
     this.turn = me;
 
-    const s = this.capStack[--this.capTop];
     const k = this.capStack[--this.capTop];
-    this.caps[enemy] -= s;
     this.caps[me] -= k;
 
-    // Restore mover stones captured by enemy
-    for (let j = 0; j < s; j++) {
-      const c = this.capStack[--this.capTop];
-      this.board[c] = me;
-      this.toggle(c, me);
-    }
     // Restore enemy stones captured by me
+    const enemy = other(me);
     for (let j = 0; j < k; j++) {
       const c = this.capStack[--this.capTop];
       this.board[c] = enemy;
@@ -378,6 +310,7 @@ class Searcher {
     const stand = this.evaluate();
     if (qd === 0 || stand >= beta) return stand;
     if (stand > alpha) alpha = stand;
+
     const moves: number[] = [];
     this.gen(this.turn, moves);
     const caps: number[] = [];
@@ -530,24 +463,30 @@ const toTT = (s: number, h: number) => (s > MATE_ZONE ? s + h : s < -MATE_ZONE ?
 const fromTT = (s: number, h: number) => (s > MATE_ZONE ? s - h : s < -MATE_ZONE ? s + h : s);
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
-/** Picks a move for the side to move. Returns move = null if there is none. */
+/** Picks a move/action for the side to move. If no legal moves, passes. */
 export function chooseMove(state: GameState, options: SearchOptions): SearchResult {
   const random = options.random ?? Math.random;
   const qDepth = options.qDepth ?? Q_DEPTH;
   const s = new Searcher(state, qDepth);
   let moves = s.rootMoves();
-  if (moves.length === 0) return { move: null, score: -WIN, depth: 0, nodes: 0 };
+  if (moves.length === 0) {
+    return { move: null, action: PASS, score: 0, depth: 0, nodes: 0 };
+  }
 
   for (let i = moves.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
     [moves[i], moves[j]] = [moves[j], moves[i]];
   }
-  if (moves.length === 1) return { move: unpack(moves[0]), score: 0, depth: 0, nodes: 0 };
+  if (moves.length === 1) {
+    const m = unpack(moves[0]);
+    return { move: m, action: m, score: 0, depth: 0, nodes: 0 };
+  }
 
   // Blunder simulation for casual difficulty
   if (options.blunderRate && options.blunderRate > 0 && random() < options.blunderRate) {
     const blunderIdx = Math.floor(random() * moves.length);
-    return { move: unpack(moves[blunderIdx]), score: 0, depth: 1, nodes: 1 };
+    const m = unpack(moves[blunderIdx]);
+    return { move: m, action: m, score: 0, depth: 1, nodes: 1 };
   }
 
   s.deadline = now() + options.timeMs;
@@ -583,7 +522,12 @@ export function chooseMove(state: GameState, options: SearchOptions): SearchResu
     bestScore = lastScores.get(pick) ?? bestScore;
   }
 
-  return { move: unpack(bestMove), score: bestScore, depth: completed, nodes: s.nodes };
+  const m = unpack(bestMove);
+  return { move: m, action: m, score: bestScore, depth: completed, nodes: s.nodes };
+}
+
+export function chooseAction(state: GameState, options: SearchOptions): Action {
+  return chooseMove(state, options).action;
 }
 
 export function chooseMoveAtLevel(state: GameState, level: Level, random?: () => number): SearchResult {

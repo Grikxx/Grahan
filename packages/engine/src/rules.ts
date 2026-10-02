@@ -1,19 +1,24 @@
 /**
- * GRAHAN rules.
+ * GRAHAN-P ("Grahan with Pass") rules engine.
  *
- * Players: Rahu (the shadow, moves first) and Surya (the sun).
+ * Players: Rahu (the shadow, moves first) and Surya (the sun, moves second).
  *
  *  1. On your turn, slide one of your stones along any straight line or diagonal
  *     through it, any distance, to an empty point. Movement is bounded by the
  *     board edges (no wrapping). Stones cannot jump over other stones.
  *  2. After landing, look along every straight ray out of the landing point.
- *     A run of enemy stones closed off by one of your stones is captured.
- *     If you slide a stone between two enemy stones, it is captured by the
- *     opponent.
- *  3. Positional superko: a move may not recreate a position (board + side to
- *     move) that has already occurred in the game.
- *  4. You win by reaching the capture target, or when your opponent has no
- *     legal move. At the ply cap the side with more stones wins (else draw).
+ *     A run of enemy stones closed off by one of your stones is captured
+ *     ("Eclipse Sandwich"). Multiple directions can capture in the same move.
+ *     No self-capture: a stone that lands between two enemy stones is NOT captured.
+ *  3. Passing is legal: at any non-terminal position, the side to move may pass
+ *     instead of moving. A pass changes only the side to move and advances ply by 1.
+ *  4. Positional superko: a MOVE is illegal if it would recreate a position
+ *     (board + side to move) that has already occurred in the game.
+ *     Passes are exempt from superko and are always legal in non-terminal positions.
+ *     Position history H is a multiset tracking position occurrences.
+ *  5. Immediate win when capture target is reached.
+ *     At ply limit L(n), the player with more stones wins (else draw).
+ *     There is no stalemate loss in GRAHAN-P.
  */
 
 import { buildPlane, type Plane } from "./geometry";
@@ -28,9 +33,11 @@ export type Player = 1 | 2;
 export const other = (p: Player): Player => (p === RAHU ? SURYA : RAHU);
 export const playerName = (p: Player) => (p === RAHU ? "Rahu" : "Surya");
 
-// ─── Variants (6×6 through 10×10) ───────────────────────────────────
+// ─── Ruleset and Variants ───────────────────────────────────────────
 
-export type VariantId = "grahan-6" | "grahan-7" | "grahan-8" | "grahan-9" | "grahan-10";
+export type Ruleset = "grahan-p" | "original";
+
+export type VariantId = "grahan-4" | "grahan-6" | "grahan-7" | "grahan-8" | "grahan-9" | "grahan-10";
 
 export interface Variant {
   readonly id: VariantId;
@@ -43,6 +50,7 @@ export interface Variant {
 }
 
 export const VARIANTS: Record<VariantId, Variant> = {
+  "grahan-4": { id: "grahan-4", name: "4 × 4", q: 4, stones: 4, captureTarget: 3, maxPly: 100, maxTurns: 50 },
   "grahan-6": { id: "grahan-6", name: "6 × 6", q: 6, stones: 12, captureTarget: 5, maxPly: 200, maxTurns: 100 },
   "grahan-7": { id: "grahan-7", name: "7 × 7", q: 7, stones: 14, captureTarget: 6, maxPly: 250, maxTurns: 125 },
   "grahan-8": { id: "grahan-8", name: "8 × 8", q: 8, stones: 16, captureTarget: 7, maxPly: 300, maxTurns: 150 },
@@ -61,8 +69,7 @@ export function completedTurns(ply: number): number {
   return Math.floor(ply / 2);
 }
 
-
-// ─── Moves and state ────────────────────────────────────────────────
+// ─── Moves, Actions, and State ──────────────────────────────────────
 
 export interface Move {
   readonly from: number;
@@ -70,6 +77,22 @@ export interface Move {
   readonly lineId: number;
   readonly dir: 1 | -1;
   readonly steps: number;
+}
+
+export interface Pass {
+  readonly type: "pass";
+}
+
+export const PASS: Pass = Object.freeze({ type: "pass" });
+
+export type Action = Move | Pass;
+
+export function isPass(action: unknown): action is Pass | "pass" {
+  if (typeof action === "string") return action.toLowerCase() === "pass";
+  if (typeof action === "object" && action !== null) {
+    return (action as { type?: string }).type === "pass";
+  }
+  return false;
 }
 
 export interface Bracket {
@@ -89,11 +112,12 @@ export interface GameState {
   readonly captured: readonly [number, number];
   readonly ply: number;
   readonly key: number;
-  /** Keys of every position that has occurred, including this one. */
-  readonly seen: ReadonlySet<number>;
-  readonly lastMove: Move | null;
+  /** Multiset of positions that have occurred in the game (position key -> count). */
+  readonly seen: ReadonlyMap<number, number>;
+  readonly lastMove: Move | Pass | null;
   readonly lastCaptured: readonly number[];
   readonly lastBrackets: readonly Bracket[];
+  readonly ruleset: Ruleset;
 }
 
 // ─── Zobrist hashing ────────────────────────────────────────────────
@@ -154,17 +178,49 @@ export function positionKey(board: Uint8Array, turn: Player, plane: Plane): numb
   return combineKey(hi, lo);
 }
 
+// ─── Multiset Helper Functions ──────────────────────────────────────
+
+function addHistory(seen: ReadonlyMap<number, number>, key: number): Map<number, number> {
+  const next = new Map(seen);
+  next.set(key, (next.get(key) ?? 0) + 1);
+  return next;
+}
+
+export function decrementHistory(seen: ReadonlyMap<number, number>, key: number): Map<number, number> {
+  const next = new Map(seen);
+  const count = next.get(key) ?? 0;
+  if (count <= 1) {
+    next.delete(key);
+  } else {
+    next.set(key, count - 1);
+  }
+  return next;
+}
+
 // ─── Construction ───────────────────────────────────────────────────
 
-function makeState(
+export function makeState(
   variant: Variant,
   board: Uint8Array,
   turn: Player,
   captured: readonly [number, number] = [0, 0],
   ply = 0,
+  ruleset: Ruleset = "grahan-p",
+  history?: ReadonlyMap<number, number> | ReadonlySet<number> | readonly number[],
 ): GameState {
   const plane = buildPlane(variant.q);
   const key = positionKey(board, turn, plane);
+  const seen = new Map<number, number>();
+  if (history) {
+    if (history instanceof Map) {
+      for (const [k, v] of history) seen.set(k, v);
+    } else if (history instanceof Set || Array.isArray(history)) {
+      for (const k of history) seen.set(k, (seen.get(k) ?? 0) + 1);
+    }
+  }
+  if (!seen.has(key)) {
+    seen.set(key, 1);
+  }
   return {
     variant,
     plane,
@@ -173,19 +229,20 @@ function makeState(
     captured,
     ply,
     key,
-    seen: new Set([key]),
+    seen,
     lastMove: null,
     lastCaptured: [],
     lastBrackets: [],
+    ruleset,
   };
 }
 
-/** Standard opening: 2 rows of Rahu at top, 2 rows of Surya at bottom. */
-export function newGame(id: VariantId = "grahan-6"): GameState {
+/** Standard opening: 1 row per side for n=4, 2 rows per side for n >= 6. */
+export function newGame(id: VariantId = "grahan-6", ruleset: Ruleset = "grahan-p"): GameState {
   const variant = VARIANTS[id];
   const q = variant.q;
   const board = new Uint8Array(q * q);
-  const rows = 2; // Always 2 rows of stones per side
+  const rows = q === 4 ? 1 : 2;
 
   for (let y = 0; y < rows; y++) {
     for (let x = 0; x < q; x++) {
@@ -193,7 +250,7 @@ export function newGame(id: VariantId = "grahan-6"): GameState {
       board[(q - 1 - y) * q + x] = SURYA;
     }
   }
-  return makeState(variant, board, RAHU);
+  return makeState(variant, board, RAHU, [0, 0], 0, ruleset);
 }
 
 /**
@@ -205,6 +262,9 @@ export function positionFromRows(
   rows: string[],
   turn: Player = RAHU,
   captured: readonly [number, number] = [0, 0],
+  ply = 0,
+  history?: ReadonlyMap<number, number> | ReadonlySet<number> | readonly number[],
+  ruleset: Ruleset = "grahan-p",
 ): GameState {
   const variant = VARIANTS[id];
   const q = variant.q;
@@ -218,7 +278,7 @@ export function positionFromRows(
       board[y * q + x] = ch === "R" ? RAHU : ch === "S" ? SURYA : EMPTY;
     }
   });
-  return makeState(variant, board, turn, captured);
+  return makeState(variant, board, turn, captured, ply, ruleset, history);
 }
 
 // ─── Move generation ────────────────────────────────────────────────
@@ -280,6 +340,7 @@ export function pseudoMoves(board: Uint8Array, plane: Plane, player: Player): Mo
 /**
  * Finds the sandwiches made by `mover` standing on `landing`.
  * `board` must already show the stone on `landing` and its old point empty.
+ * No self-capture: a stone that lands between two enemy stones is NOT captured.
  */
 export function findCaptures(board: Uint8Array, plane: Plane, landing: number, mover: Player): Bracket[] {
   const enemy = other(mover);
@@ -295,66 +356,18 @@ export function findCaptures(board: Uint8Array, plane: Plane, landing: number, m
   return out;
 }
 
-export interface InterpositionBracket {
-  readonly lineId: number;
-  readonly anchors: readonly [number, number];
-  readonly cells: readonly number[];
-}
-
-/**
- * Finds sandwiches where friendly stones at `landing` (and any adjacent allied run)
- * have been placed or closed between two enemy stones along a line.
- * In custodial capture, if a player puts their stone between two enemy stones,
- * the enemy captures that stone (and the flanked allied run).
- */
-export function findInterpositionCaptures(
-  board: Uint8Array,
-  plane: Plane,
-  landing: number,
-  mover: Player,
-): InterpositionBracket[] {
-  const enemy = other(mover);
-  const out: InterpositionBracket[] = [];
-  const raysByLine = new Map<number, { cells: readonly number[] }[]>();
-  for (const ray of plane.captureRays[landing]) {
-    let list = raysByLine.get(ray.lineId);
-    if (!list) {
-      list = [];
-      raysByLine.set(ray.lineId, list);
-    }
-    list.push(ray);
-  }
-
-  for (const [lineId, rays] of raysByLine) {
-    if (rays.length < 2) continue;
-    const [rayA, rayB] = rays;
-
-    let i = 0;
-    while (i < rayA.cells.length && board[rayA.cells[i]] === mover) i++;
-    if (i >= rayA.cells.length || board[rayA.cells[i]] !== enemy) continue;
-
-    let j = 0;
-    while (j < rayB.cells.length && board[rayB.cells[j]] === mover) j++;
-    if (j >= rayB.cells.length || board[rayB.cells[j]] !== enemy) continue;
-
-    out.push({
-      lineId,
-      anchors: [rayA.cells[i], rayB.cells[j]],
-      cells: [...rayA.cells.slice(0, i), landing, ...rayB.cells.slice(0, j)],
-    });
-  }
-
-  return out;
-}
+// ─── Play / Apply ───────────────────────────────────────────────────
 
 /** Applies a move without checking legality. */
-export function applyMove(state: GameState, move: Move): GameState {
+export function applyMove(state: GameState, move: Move | Pass | "pass"): GameState {
+  if (isPass(move)) return applyPass(state);
+
   const { plane, turn } = state;
   const board = new Uint8Array(state.board);
   board[move.from] = EMPTY;
   board[move.to] = turn;
 
-  // 1. Active captures: mover sandwiches enemy stones
+  // Active captures: mover sandwiches enemy stones
   const brackets = findCaptures(board, plane, move.to, turn);
   const taken: number[] = [];
   for (const b of brackets) {
@@ -366,34 +379,12 @@ export function applyMove(state: GameState, move: Move): GameState {
     }
   }
 
-  // 2. Interposition captures: mover puts piece between two enemy stones
-  const interBrackets = findInterpositionCaptures(board, plane, move.to, turn);
-  const selfTaken: number[] = [];
-  for (const ib of interBrackets) {
-    for (const c of ib.cells) {
-      if (board[c] !== EMPTY) {
-        board[c] = EMPTY;
-        selfTaken.push(c);
-      }
-    }
-  }
-
   const next = other(turn);
   const captured: [number, number] = [state.captured[0], state.captured[1]];
   captured[turn === RAHU ? 0 : 1] += taken.length;
-  captured[next === RAHU ? 0 : 1] += selfTaken.length;
 
   const key = positionKey(board, next, plane);
-  const seen = new Set(state.seen);
-  seen.add(key);
-
-  const combinedBrackets: Bracket[] = [
-    ...brackets,
-    ...interBrackets.flatMap((ib) => [
-      { lineId: ib.lineId, anchor: ib.anchors[0], cells: ib.cells },
-      { lineId: ib.lineId, anchor: ib.anchors[1], cells: ib.cells },
-    ]),
-  ];
+  const seen = addHistory(state.seen, key);
 
   return {
     variant: state.variant,
@@ -405,9 +396,45 @@ export function applyMove(state: GameState, move: Move): GameState {
     key,
     seen,
     lastMove: move,
-    lastCaptured: [...taken, ...selfTaken],
-    lastBrackets: combinedBrackets,
+    lastCaptured: taken,
+    lastBrackets: brackets,
+    ruleset: state.ruleset,
   };
+}
+
+/**
+ * Applies a pass (N1).
+ * Changes only side to move; moves nothing; captures nothing; advances ply by 1.
+ * Exempt from superko, but records the resulting position in H (N2).
+ */
+export function applyPass(state: GameState): GameState {
+  if (outcome(state).winner !== null) {
+    throw new Error("Cannot pass in a terminal state");
+  }
+  const next = other(state.turn);
+  const key = positionKey(state.board, next, state.plane);
+  const seen = addHistory(state.seen, key);
+
+  return {
+    variant: state.variant,
+    plane: state.plane,
+    board: state.board,
+    turn: next,
+    captured: state.captured,
+    ply: state.ply + 1,
+    key,
+    seen,
+    lastMove: PASS,
+    lastCaptured: [],
+    lastBrackets: [],
+    ruleset: state.ruleset,
+  };
+}
+
+/** Applies an action (move or pass). */
+export function applyAction(state: GameState, action: Action | "pass"): GameState {
+  if (isPass(action)) return applyPass(state);
+  return applyMove(state, action);
 }
 
 /** Key of the position a move would create (cheap superko test). */
@@ -418,28 +445,56 @@ function keyAfter(state: GameState, move: Move, scratch: Uint8Array): number {
   for (const b of findCaptures(scratch, state.plane, move.to, state.turn)) {
     for (const c of b.cells) scratch[c] = EMPTY;
   }
-  for (const ib of findInterpositionCaptures(scratch, state.plane, move.to, state.turn)) {
-    for (const c of ib.cells) scratch[c] = EMPTY;
-  }
   return positionKey(scratch, other(state.turn), state.plane);
 }
 
-/** Legal moves for the side to move, with superko applied. */
+export function isTerminal(state: GameState): boolean {
+  const t = state.variant.captureTarget;
+  if (state.captured[0] >= t || state.captured[1] >= t) return true;
+  if (state.variant.maxPly > 0 && state.ply >= state.variant.maxPly) return true;
+  return false;
+}
+
+/** Legal moves for the side to move, with superko applied (not counting pass). */
 export function legalMoves(state: GameState): Move[] {
+  if (isTerminal(state)) return [];
   const scratch = new Uint8Array(state.board.length);
-  return pseudoMoves(state.board, state.plane, state.turn).filter((m) => !state.seen.has(keyAfter(state, m, scratch)));
+  return pseudoMoves(state.board, state.plane, state.turn).filter((m) => {
+    const k = keyAfter(state, m, scratch);
+    return (state.seen.get(k) ?? 0) === 0;
+  });
 }
 
 /** Legal moves of one stone (empty if it is not the side to move). */
 export function legalMovesFrom(state: GameState, from: number): Move[] {
-  if (state.board[from] !== state.turn) return [];
+  if (isTerminal(state) || state.board[from] !== state.turn) return [];
   const scratch = new Uint8Array(state.board.length);
-  return slidesFrom(state.board, state.plane, from).filter((m) => !state.seen.has(keyAfter(state, m, scratch)));
+  return slidesFrom(state.board, state.plane, from).filter((m) => {
+    const k = keyAfter(state, m, scratch);
+    return (state.seen.get(k) ?? 0) === 0;
+  });
 }
 
-export function isLegal(state: GameState, move: Move): boolean {
-  return legalMovesFrom(state, move.from).some(
-    (m) => m.to === move.to && m.lineId === move.lineId && m.dir === move.dir,
+/**
+ * Returns all legal actions for the side to move.
+ * In GRAHAN-P, at any non-terminal position, this includes all legal moves plus PASS.
+ */
+export function legalActions(state: GameState): Action[] {
+  if (outcome(state).winner !== null) return [];
+  const moves = legalMoves(state);
+  if (state.ruleset === "original") {
+    return moves;
+  }
+  return [...moves, PASS];
+}
+
+export function isLegal(state: GameState, action: Action | "pass"): boolean {
+  if (outcome(state).winner !== null) return false;
+  if (isPass(action)) {
+    return state.ruleset !== "original";
+  }
+  return legalMovesFrom(state, action.from).some(
+    (m) => m.to === action.to && m.lineId === action.lineId && m.dir === action.dir,
   );
 }
 
@@ -476,16 +531,25 @@ export function countStones(board: Uint8Array, player: Player): number {
 
 export function outcome(state: GameState): Outcome {
   const t = state.variant.captureTarget;
+
+  // (T1) Target check: player who just acted captured at least target in total
   if (state.captured[0] >= t) return { winner: "rahu", reason: "target" };
   if (state.captured[1] >= t) return { winner: "surya", reason: "target" };
-  if (legalMoves(state).length === 0) {
-    return { winner: state.turn === RAHU ? "surya" : "rahu", reason: "trapped" };
+
+  // For ruleset "original" only: stalemate loss
+  if (state.ruleset === "original") {
+    if (legalMoves(state).length === 0) {
+      return { winner: state.turn === RAHU ? "surya" : "rahu", reason: "trapped" };
+    }
   }
+
+  // (T2) Ply limit L(n) check: compare stone counts
   if (state.variant.maxPly > 0 && state.ply >= state.variant.maxPly) {
     const r = countStones(state.board, RAHU);
     const s = countStones(state.board, SURYA);
     return { winner: r > s ? "rahu" : s > r ? "surya" : "draw", reason: "ply-cap" };
   }
+
   return { winner: null, reason: null };
 }
 
@@ -496,13 +560,14 @@ export function pointName(plane: Plane, p: number): string {
   return String.fromCharCode(97 + plane.x(p)) + (plane.y(p) + 1);
 }
 
-export function moveName(plane: Plane, move: Move, captures = 0): string {
+export function moveName(plane: Plane, move: Move | Pass | "pass" | null, captures = 0): string {
+  if (!move || isPass(move)) return "pass";
   let s = `${pointName(plane, move.from)}–${pointName(plane, move.to)}`;
   if (captures > 0) s += ` ×${captures}`;
   return s;
 }
 
-// ─── Snapshots (for sending positions to a Web Worker) ──────────────
+// ─── Snapshots (for Web Worker and serialization) ───────────────────
 
 export interface Snapshot {
   variant: VariantId;
@@ -511,6 +576,8 @@ export interface Snapshot {
   captured: [number, number];
   ply: number;
   seen: number[];
+  historyCounts?: [number, number][];
+  ruleset?: Ruleset;
 }
 
 export function toSnapshot(s: GameState): Snapshot {
@@ -520,7 +587,9 @@ export function toSnapshot(s: GameState): Snapshot {
     turn: s.turn,
     captured: [s.captured[0], s.captured[1]],
     ply: s.ply,
-    seen: Array.from(s.seen),
+    seen: Array.from(s.seen.keys()),
+    historyCounts: Array.from(s.seen.entries()),
+    ruleset: s.ruleset,
   };
 }
 
@@ -528,6 +597,12 @@ export function fromSnapshot(snap: Snapshot): GameState {
   const variant = VARIANTS[snap.variant];
   const plane = buildPlane(variant.q);
   const board = Uint8Array.from(snap.board);
+  const seen = new Map<number, number>();
+  if (snap.historyCounts && Array.isArray(snap.historyCounts)) {
+    for (const [k, v] of snap.historyCounts) seen.set(k, v);
+  } else if (snap.seen && Array.isArray(snap.seen)) {
+    for (const k of snap.seen) seen.set(k, (seen.get(k) ?? 0) + 1);
+  }
   return {
     variant,
     plane,
@@ -536,9 +611,57 @@ export function fromSnapshot(snap: Snapshot): GameState {
     captured: snap.captured,
     ply: snap.ply,
     key: positionKey(board, snap.turn, plane),
-    seen: new Set(snap.seen),
+    seen,
     lastMove: null,
     lastCaptured: [],
     lastBrackets: [],
+    ruleset: snap.ruleset ?? "grahan-p",
   };
+}
+
+// ─── Save / Load / Replay (Section 6) ───────────────────────────────
+
+export interface GameRecord {
+  version: number;
+  variant: VariantId;
+  ruleset?: Ruleset;
+  actions: (Move | Pass | "pass" | string)[];
+}
+
+export function serializeGame(state: GameState, actions: readonly (Action | "pass")[] = []): string {
+  const record: GameRecord = {
+    version: 2,
+    variant: state.variant.id,
+    ruleset: state.ruleset,
+    actions: actions.map((a) => (isPass(a) ? "pass" : a)),
+  };
+  return JSON.stringify(record, null, 2);
+}
+
+export function deserializeGame(json: string): { state: GameState; actions: Action[] } {
+  const data = JSON.parse(json);
+  // Backward compatibility: old format snapshot with board array
+  if (data.board && data.variant) {
+    const state = fromSnapshot(data);
+    return { state, actions: [] };
+  }
+  const variant: VariantId = data.variant ?? "grahan-6";
+  const ruleset: Ruleset = data.ruleset ?? "grahan-p";
+  const rawActions: (Move | Pass | "pass" | string)[] = data.actions ?? [];
+  const actions: Action[] = rawActions.map((a) => (isPass(a) ? PASS : (a as Move)));
+  const state = replayGame(variant, actions, ruleset);
+  return { state, actions };
+}
+
+export function replayGame(
+  variantId: VariantId,
+  actions: readonly (Action | "pass" | string)[],
+  ruleset: Ruleset = "grahan-p",
+): GameState {
+  let state = newGame(variantId, ruleset);
+  for (const a of actions) {
+    if (outcome(state).winner !== null) break;
+    state = applyAction(state, isPass(a) ? PASS : (a as Move));
+  }
+  return state;
 }

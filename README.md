@@ -1,83 +1,48 @@
-# 🌑 GRAHAN (ग्रहण)
+# 🌑 GRAHAN-P (ग्रहण-प) — Grahan with Pass
 
-> **A mathematical strategy game on affine planes over Galois Fields.**
+> **A celestial strategy game on $n \times n$ grids for Discrete Mathematics.**
 
-GRAHAN ("Eclipse" in Sanskrit) is a 2-player zero-sum abstract strategy game played on finite geometric structures. Capture your opponent's stones through custodial ("sandwich") captures along geometric lines on a toroidal board.
+GRAHAN-P ("Grahan with Pass") is a two-player zero-sum abstract strategy game. Capture enemy stones through custodial ("eclipse sandwich") captures along straight lines and diagonals, or maneuver positionally under positional superko and legal passing.
 
 ## Quick Start
 
 ```bash
-# From the repository root
-cd grahan
-
-# Install dependencies
+# From repository root
 npm install
 
-# Start the web app
-cd apps/web
-npm run dev
+# Run all test suites
+npm test
+
+# Run Next.js web application
+npm run dev --prefix apps/web
 # → http://localhost:3000
 ```
 
-## Project Structure
+## Board Variants
 
-```
-grahan/
-├── packages/
-│   ├── math/          # Galois Fields (GF(3), GF(5)) + Affine Plane AG(2,q)
-│   ├── engine/        # Game state, moves, custodial capture, Zobrist hashing
-│   └── ai/            # Negamax + Alpha-Beta pruning, transposition table
-├── apps/
-│   └── web/           # Next.js 16 + Tailwind CSS v4 frontend
-└── package.json       # npm workspaces root
-```
+| Variant | Grid | Stones/Side | Rows per Side | Capture Target | Ply Limit $L(n)$ | Max Turns |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Grahan-4** | 4 × 4 | 4 | 1 (y=0 / y=3) | 3 | 100 | 50 |
+| **Grahan-6** | 6 × 6 | 12 | 2 (y=0,1 / y=4,5) | 5 | 200 | 100 |
+| **Grahan-7** | 7 × 7 | 14 | 2 (y=0,1 / y=5,6) | 6 | 250 | 125 |
+| **Grahan-8** | 8 × 8 | 16 | 2 (y=0,1 / y=6,7) | 7 | 300 | 150 |
+| **Grahan-9** | 9 × 9 | 18 | 2 (y=0,1 / y=7,8) | 8 | 350 | 175 |
+| **Grahan-10** | 10 × 10 | 20 | 2 (y=0,1 / y=8,9) | 9 | 400 | 200 |
 
-## Game Rules (TL;DR)
+## Core Rules
 
-1. **Board:** A q×q grid where all lines wrap around (torus topology)
-2. **Move:** Slide a stone along any geometric line to an empty point (no jumping)
-3. **Capture:** When your stone lands and sandwiches enemy stones between yours along a line, those enemies are captured
-4. **Win:** Capture enough stones (2 on 3×3, 4 on 5×5) or trap your opponent
+1. **Rahu & Surya**: Rahu (dark shadow) moves first; Surya (radiant sun) moves second.
+2. **Move**: Pick a stone and slide it any positive distance along an open row, column, or diagonal.
+3. **Pass (N1)**: At any non-terminal position, the player to move may pass. A pass changes only the side to move and advances the ply counter by 1.
+4. **Eclipse Sandwich**: An unbroken run of enemy stones between the mover's landing stone and another friendly stone is captured. Multiple rays capture simultaneously. No self-capture (landing between two enemy stones does not capture the mover).
+5. **Superko (N2)**: A move may not recreate a position $(board, \text{turn})$ that has already occurred in the game. Passes are exempt from Superko. Position history $H$ is a multiset.
+6. **Winning (N3 & K1–K5)**:
+   - **T1**: Reaching $n-1$ captures wins immediately.
+   - **T2**: At ply limit $L(n)$, player with more stones wins (equal = draw).
+   - **No stalemate loss**: Passing is always legal in non-terminal positions.
 
-## Boards
-
-| Variant | Grid | Points | Lines | Pieces/Side | Capture Target |
-|---------|------|--------|-------|-------------|----------------|
-| Grahan-3 | 3×3 | 9 | 12 | 3 | 2 |
-| Grahan-5 | 5×5 | 25 | 30 | 10 | 4 |
-
-## Tech Stack
-
-- **Frontend:** Next.js 16 (App Router), Tailwind CSS v4, HTML5 Canvas
-- **Game Engine:** TypeScript (pure functional, immutable state)
-- **AI:** Iterative Deepening Negamax with Alpha-Beta pruning
-- **Rendering:** Custom Canvas renderer with glow effects, line highlights, wrap arrows
-
-## Pages
-
-- `/` — Landing page with star field animation
-- `/tutorial` — Interactive 10-step tutorial on 3×3 board
-- `/play` — Full game with AI opponent or local PvP
-- `/about` — Complete rules reference
-
-## Development
+## Testing
 
 ```bash
-# Run tests
 npm test
-
-# Build for production
-cd apps/web && npm run build
 ```
-
-## Mathematics
-
-The board is an **Affine Plane AG(2, q)** over the Galois Field GF(q). Key properties:
-- q² points, q(q+1) lines
-- q+1 lines through every point, q points on every line
-- Perfect symmetry: every point is equivalent (vertex-transitive)
-- Lines come in q+1 "parallel classes" — lines of the same slope never intersect
-
-## License
-
-MIT

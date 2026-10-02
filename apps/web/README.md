@@ -1,36 +1,43 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# GRAHAN — Web Frontend
+
+This is the Next.js web application for **GRAHAN**, a two-player abstract strategy game of celestial eclipses and positional strategy.
+
+## Rules of GRAHAN
+
+1. **Board Sizes**: $n \times n$ grids for $n \in \{4, 6, 7, 8, 9, 10\}$.
+   - $n = 4$: Rahu (shadow) fills row $y=0$ (4 stones); Surya (sun) fills row $y=3$ (4 stones).
+   - $n \ge 6$: Rahu fills rows $y=0$ and $y=1$; Surya fills rows $y=n-2$ and $y=n-1$.
+2. **Movement & Passing (Rule N1)**:
+   - Pick a stone and slide it any positive distance along an open row, column, or diagonal.
+   - At any non-terminal position, the player to move may **pass**. Passing advances the ply counter by 1 and passes the turn.
+3. **Eclipse Sandwich Capture**:
+   - An unbroken row of enemy stones sandwiched between the mover's landing piece and another friendly piece along any straight ray is captured.
+   - Multiple directions can capture in one move.
+   - **No self-capture**: landing between two enemy stones is safe.
+4. **Positional Superko (Rule N2)**:
+   - Moves may not recreate an earlier position $(board, \text{side to move})$.
+   - Passes are exempt from Superko and are always legal in non-terminal positions.
+5. **Winning Conditions (Rule N3)**:
+   - (T1) Reaching the capture target ($n - 1$ stones) wins immediately.
+   - (T2) At ply limit $L(n)$ ($100, 200, 250, 300, 350, 400$), the side with more remaining stones wins (equal = draw).
+   - No stalemate loss: passing is always legal.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+# Install dependencies
+npm install
+
+# Run the development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+# Open http://localhost:3000 in your browser
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Running Tests
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+From the repository root:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm test
+```
